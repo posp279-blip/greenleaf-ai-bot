@@ -20,24 +20,6 @@ const queryClient = new QueryClient({
       staleTime: 30_000,
     },
   },
-  mutationCache: {
-    config: {
-      onError: (err) => {
-        if (err && typeof err === "object" && "status" in err && err.status === 401) {
-          window.location.reload();
-        }
-      },
-    },
-  },
-  queryCache: {
-    config: {
-      onError: (err) => {
-        if (err && typeof err === "object" && "status" in err && err.status === 401) {
-          window.location.reload();
-        }
-      },
-    },
-  },
 });
 
 const NAV = [
