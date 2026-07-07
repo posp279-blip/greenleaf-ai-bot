@@ -1,6 +1,7 @@
 import { Switch, Route, Router as WouterRouter, Link, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import Dashboard from "@/pages/Dashboard";
 import LeadsPage from "@/pages/Leads";
 import PartnersPage from "@/pages/Partners";
@@ -9,9 +10,35 @@ import VideosPage from "@/pages/Videos";
 import CalculatorPage from "@/pages/Calculator";
 import SettingsPage from "@/pages/Settings";
 import AiPage from "@/pages/Ai";
+import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 30_000,
+    },
+  },
+  mutationCache: {
+    config: {
+      onError: (err) => {
+        if (err && typeof err === "object" && "status" in err && err.status === 401) {
+          window.location.reload();
+        }
+      },
+    },
+  },
+  queryCache: {
+    config: {
+      onError: (err) => {
+        if (err && typeof err === "object" && "status" in err && err.status === 401) {
+          window.location.reload();
+        }
+      },
+    },
+  },
+});
 
 const NAV = [
   { path: "/", label: "📊 Дашборд" },
@@ -26,6 +53,7 @@ const NAV = [
 
 function Sidebar({ mobile, onClose }: { mobile?: boolean; onClose?: () => void }) {
   const [location] = useLocation();
+  const { logout } = useAuth();
   return (
     <aside className={`${mobile ? "w-full" : "w-64"} flex flex-col h-full bg-sidebar text-sidebar-foreground`}>
       <div className="px-6 py-5 border-b border-sidebar-border">
@@ -49,8 +77,14 @@ function Sidebar({ mobile, onClose }: { mobile?: boolean; onClose?: () => void }
           );
         })}
       </nav>
-      <div className="px-6 py-4 border-t border-sidebar-border text-xs text-sidebar-foreground/40">
-        Greenleaf Bot v1.0
+      <div className="px-4 py-4 border-t border-sidebar-border">
+        <button
+          onClick={() => { onClose?.(); logout(); }}
+          className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+          Выйти
+        </button>
       </div>
     </aside>
   );
@@ -100,10 +134,24 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <Layout />
+        <AuthGate />
       </WouterRouter>
     </QueryClientProvider>
   );
+}
+
+function AuthGate() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return isAuthenticated ? <Layout /> : <Login />;
 }
 
 export default App;
