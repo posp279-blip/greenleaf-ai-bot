@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useGetPartners, useCreatePartner, useUpdatePartner, useDeletePartner, getGetPartnersQueryKey, getGetStatsQueryKey } from "@workspace/api-client-react";
+import { useGetPartners, useCreatePartner, useUpdatePartner, useDeletePartner, getGetPartnersQueryKey, getGetStatsQueryKey, getGetLeadsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function PartnersPage() {
@@ -10,6 +10,7 @@ export default function PartnersPage() {
   const deletePartner = useDeletePartner({ mutation: { onSuccess: () => {
     qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() });
     qc.invalidateQueries({ queryKey: getGetStatsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetLeadsQueryKey() });
   } } });
 
   const [showCreate, setShowCreate] = useState(false);
