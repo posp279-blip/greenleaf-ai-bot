@@ -83,7 +83,7 @@ export interface LeadStatusUpdate {
 }
 
 export interface ConvertLeadInput {
-  refCode: string;
+  refCode?: string;
 }
 
 export interface Partner {

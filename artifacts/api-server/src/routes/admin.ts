@@ -5,7 +5,7 @@ import {
   scenarioBlocksTable, videoBlocksTable, calculatorItemsTable,
   appSettingsTable, messagesTable, aiLogsTable,
 } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { isAiAvailable } from "../bot/ai.js";
 import { getBot } from "../bot/index.js";
 
@@ -66,12 +66,18 @@ router.patch("/leads/:id", async (req, res) => {
 
 router.post("/leads/:id/convert-to-partner", async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { refCode } = req.body as { refCode?: string };
-  if (!refCode) { res.status(400).json({ error: "refCode required" }); return; }
-  const existing = await db.select().from(partnersTable).where(eq(partnersTable.refCode, refCode));
-  if (existing.length > 0) { res.status(400).json({ error: "RefCode уже занят" }); return; }
   const lead = (await db.select().from(leadsTable).where(eq(leadsTable.id, id)))[0];
   if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
+
+  // Auto-generate unique refCode based on lead name
+  const baseRef = (lead.name || "partner").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "user";
+  let refCode = baseRef;
+  let suffix = 1;
+  while ((await db.select().from(partnersTable).where(eq(partnersTable.refCode, refCode))).length > 0) {
+    refCode = `${baseRef}${suffix}`;
+    suffix++;
+  }
+
   const session = (await db.select().from(userSessionsTable).where(eq(userSessionsTable.id, lead.sessionId)))[0];
   const [partner] = await db.insert(partnersTable).values({
     name: lead.name,
@@ -130,10 +136,24 @@ router.get("/partners", async (_req, res) => {
 
 router.post("/partners", async (req, res) => {
   const { name, telegram, phone, refCode } = req.body as { name?: string; telegram?: string; phone?: string; refCode?: string };
-  if (!name || !refCode) { res.status(400).json({ error: "name and refCode required" }); return; }
-  const existing = await db.select().from(partnersTable).where(eq(partnersTable.refCode, refCode));
+  if (!name) { res.status(400).json({ error: "name required" }); return; }
+
+  // Auto-generate refCode if not provided
+  let finalRefCode = refCode;
+  if (!finalRefCode) {
+    const baseRef = name.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "partner";
+    let candidate = baseRef;
+    let suffix = 1;
+    while ((await db.select().from(partnersTable).where(eq(partnersTable.refCode, candidate))).length > 0) {
+      candidate = `${baseRef}${suffix}`;
+      suffix++;
+    }
+    finalRefCode = candidate;
+  }
+
+  const existing = await db.select().from(partnersTable).where(eq(partnersTable.refCode, finalRefCode));
   if (existing.length > 0) { res.status(400).json({ error: "RefCode уже занят" }); return; }
-  const [partner] = await db.insert(partnersTable).values({ name, telegram, phone, refCode, isActive: true }).returning();
+  const [partner] = await db.insert(partnersTable).values({ name, telegram, phone, refCode: finalRefCode, isActive: true }).returning();
   res.json(partner);
 });
 

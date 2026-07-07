@@ -76,14 +76,15 @@ export default function PartnersPage() {
           <div className="bg-card rounded-xl border p-6 w-96 shadow-xl space-y-4">
             <h2 className="font-bold text-lg">Новый партнёр</h2>
             <input type="text" placeholder="Имя *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
-            <input type="text" placeholder="refCode * (латиница/цифры)" value={form.refCode} onChange={(e) => setForm({ ...form, refCode: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <div className="text-xs text-muted-foreground -mt-1">refCode будет сгенерирован автоматически по имени. Можно ввести вручную:</div>
+            <input type="text" placeholder="refCode (опционально, латиница/цифры)" value={form.refCode} onChange={(e) => setForm({ ...form, refCode: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
             <input type="text" placeholder="Telegram (@username)" value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
             <input type="text" placeholder="Телефон" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
             <div className="flex gap-3">
               <button onClick={() => { setShowCreate(false); setForm({ name: "", refCode: "", telegram: "", phone: "" }); }} className="flex-1 border rounded-lg px-4 py-2 text-sm hover:bg-muted transition">Отмена</button>
               <button
                 onClick={() => createPartner.mutate({ data: { name: form.name, refCode: form.refCode, telegram: form.telegram || undefined, phone: form.phone || undefined } })}
-                disabled={!form.name || !form.refCode || createPartner.isPending}
+                disabled={!form.name || createPartner.isPending}
                 className="flex-1 bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm hover:opacity-90 transition disabled:opacity-50"
               >
                 {createPartner.isPending ? "..." : "Создать"}

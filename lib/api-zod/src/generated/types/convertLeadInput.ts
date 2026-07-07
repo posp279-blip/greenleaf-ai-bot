@@ -7,5 +7,5 @@
  */
 
 export interface ConvertLeadInput {
-  refCode: string;
+  refCode?: string;
 }

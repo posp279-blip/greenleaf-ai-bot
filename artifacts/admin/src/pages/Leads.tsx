@@ -15,11 +15,10 @@ export default function LeadsPage() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [convertId, setConvertId] = useState<number | null>(null);
-  const [refCode, setRefCode] = useState("");
 
   const { data: leads = [], isLoading } = useGetLeads({ status: statusFilter || undefined });
   const updateLead = useUpdateLead({ mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getGetLeadsQueryKey() }) } });
-  const convertLead = useConvertLeadToPartner({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetLeadsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }); setConvertId(null); setRefCode(""); } } });
+  const convertLead = useConvertLeadToPartner({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetLeadsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }); setConvertId(null); } } });
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -76,18 +75,12 @@ export default function LeadsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-xl border p-6 w-96 shadow-xl">
             <h2 className="font-bold text-lg mb-4">Создать партнёра из заявки</h2>
-            <input
-              type="text"
-              placeholder="Введи refCode (латиница/цифры)"
-              value={refCode}
-              onChange={(e) => setRefCode(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm mb-4"
-            />
+            <p className="text-sm text-muted-foreground mb-4">refCode будет сгенерирован автоматически по имени заявки.</p>
             <div className="flex gap-3">
-              <button onClick={() => { setConvertId(null); setRefCode(""); }} className="flex-1 border rounded-lg px-4 py-2 text-sm hover:bg-muted transition">Отмена</button>
+              <button onClick={() => { setConvertId(null); }} className="flex-1 border rounded-lg px-4 py-2 text-sm hover:bg-muted transition">Отмена</button>
               <button
-                onClick={() => convertLead.mutate({ id: convertId, data: { refCode } })}
-                disabled={!refCode || convertLead.isPending}
+                onClick={() => convertLead.mutate({ id: convertId, data: {} })}
+                disabled={convertLead.isPending}
                 className="flex-1 bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm hover:opacity-90 transition disabled:opacity-50"
               >
                 {convertLead.isPending ? "..." : "Создать"}

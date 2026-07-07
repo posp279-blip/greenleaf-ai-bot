@@ -548,7 +548,6 @@ components:
 
     ConvertLeadInput:
       type: object
-      required: [refCode]
       properties:
         refCode:
           type: string

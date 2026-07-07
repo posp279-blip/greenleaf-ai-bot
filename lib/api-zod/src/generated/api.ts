@@ -156,7 +156,7 @@ export const ConvertLeadToPartnerParams = zod.object({
 })
 
 export const ConvertLeadToPartnerBody = zod.object({
-  "refCode": zod.string()
+  "refCode": zod.string().optional()
 })
 
 export const ConvertLeadToPartnerResponse = zod.object({
