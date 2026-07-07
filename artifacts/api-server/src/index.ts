@@ -16,12 +16,17 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
+const domains = process.env.REPLIT_DOMAINS || "";
+const host = devDomain || domains.split(",")[0] || "";
+const webhookUrl = host ? `https://${host}/api/bot/webhook` : undefined;
+
 app.listen(port, async (err?: Error) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
-  await startBot();
+  logger.info({ port, webhookUrl }, "Server listening");
+  await startBot(webhookUrl);
 });

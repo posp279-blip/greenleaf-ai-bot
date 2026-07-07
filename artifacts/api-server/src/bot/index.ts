@@ -1,4 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
+import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
 import { handleMessage, handleCallback, handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
@@ -8,7 +9,7 @@ import { eq } from "drizzle-orm";
 
 let bot: TelegramBot | null = null;
 
-export async function startBot(): Promise<void> {
+export async function startBot(webhookUrl?: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     logger.warn("TELEGRAM_BOT_TOKEN not set — bot will not start");
@@ -18,15 +19,7 @@ export async function startBot(): Promise<void> {
   // Run DB migrations/seed
   await seedDatabase();
 
-  // Clear any stale webhook and pending updates so old processes don't steal messages
-  try {
-    const clearWebhook = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`);
-    if (clearWebhook.ok) logger.info("Cleared Telegram webhook and pending updates");
-  } catch (err) {
-    logger.warn({ err }, "Failed to clear webhook — continuing anyway");
-  }
-
-  bot = new TelegramBot(token, { polling: true });
+  bot = new TelegramBot(token, { polling: false, webHook: false });
 
   // Store bot username in settings
   try {
@@ -40,39 +33,86 @@ export async function startBot(): Promise<void> {
     logger.error({ err }, "Failed to get bot info");
   }
 
-  bot.on("message", async (msg) => {
+  // If webhook URL is provided, use webhook mode; otherwise fallback to polling
+  if (webhookUrl) {
     try {
-      await handleMessage(bot!, msg);
+      await bot.setWebHook(webhookUrl);
+      logger.info({ webhookUrl }, "Telegram webhook set");
     } catch (err) {
-      logger.error({ err, chatId: msg.chat.id }, "Error handling message");
+      logger.error({ err, webhookUrl }, "Failed to set webhook — falling back to polling");
+    }
+  }
+
+  // Check if webhook is actually active
+  const webhookInfo = await bot.getWebHookInfo();
+  if (!webhookInfo.url || webhookInfo.url !== webhookUrl) {
+    // Webhook not active — use polling
+    if (webhookUrl) {
+      logger.warn("Webhook not active — falling back to polling");
+    }
+    bot = new TelegramBot(token, { polling: true });
+
+    bot.on("message", async (msg) => {
       try {
-        await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй ещё раз или нажми /start");
-      } catch {}
-    }
-  });
-
-  bot.on("callback_query", async (query) => {
-    try {
-      const data = query.data || "";
-      if (data.startsWith("admin_") || data.startsWith("lead_status_") ||
-          data.startsWith("lead_to_partner_") || data.startsWith("toggle_") ||
-          data.startsWith("partner_leads_admin_")) {
-        await handleAdminCallback(bot!, query);
-      } else {
-        await handleCallback(bot!, query);
+        await handleMessage(bot!, msg);
+      } catch (err) {
+        logger.error({ err, chatId: msg.chat.id }, "Error handling message");
+        try {
+          await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй ещё раз или нажми /start");
+        } catch {}
       }
-    } catch (err) {
-      logger.error({ err }, "Error handling callback query");
-    }
-  });
+    });
 
-  bot.on("polling_error", (err) => {
-    logger.error({ err }, "Telegram polling error");
-  });
+    bot.on("callback_query", async (query) => {
+      try {
+        const data = query.data || "";
+        if (data.startsWith("admin_") || data.startsWith("lead_status_") ||
+            data.startsWith("lead_to_partner_") || data.startsWith("toggle_") ||
+            data.startsWith("partner_leads_admin_")) {
+          await handleAdminCallback(bot!, query);
+        } else {
+          await handleCallback(bot!, query);
+        }
+      } catch (err) {
+        logger.error({ err }, "Error handling callback query");
+      }
+    });
 
-  logger.info("Telegram bot started successfully");
+    bot.on("polling_error", (err) => {
+      logger.error({ err }, "Telegram polling error");
+    });
+
+    logger.info("Telegram bot started in polling mode");
+  } else {
+    logger.info("Telegram bot started in webhook mode");
+  }
 }
 
 export function getBot(): TelegramBot | null {
   return bot;
+}
+
+export async function handleWebhookUpdate(update: Update): Promise<void> {
+  const b = getBot();
+  if (!b) {
+    logger.warn("Bot not initialized — skipping webhook update");
+    return;
+  }
+
+  try {
+    if (update.message) {
+      await handleMessage(b, update.message);
+    } else if (update.callback_query) {
+      const data = update.callback_query.data || "";
+      if (data.startsWith("admin_") || data.startsWith("lead_status_") ||
+          data.startsWith("lead_to_partner_") || data.startsWith("toggle_") ||
+          data.startsWith("partner_leads_admin_")) {
+        await handleAdminCallback(b, update.callback_query);
+      } else {
+        await handleCallback(b, update.callback_query);
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Error handling webhook update");
+  }
 }
