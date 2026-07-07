@@ -30,3 +30,8 @@ NODE_ENV = "production"
 
 [services.production.health.startup]
 path = "/api/healthz"
+
+  # Telegram bot needs always-running VM, not autoscale
+  [services.production.deployConfig]
+  deploymentTarget = "vm"
+  

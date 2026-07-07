@@ -16,9 +16,11 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+// Production URL takes priority, fallback to dev domain
+const appUrl = process.env.REPLIT_APP_URL || "";
 const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
 const domains = process.env.REPLIT_DOMAINS || "";
-const host = devDomain || domains.split(",")[0] || "";
+const host = appUrl.replace(/^https?:\/\//, "") || domains.split(",")[0] || devDomain || "";
 const webhookUrl = host ? `https://${host}/api/bot/webhook` : undefined;
 
 app.listen(port, async (err?: Error) => {
