@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 const router = Router();
-const ADMIN_PASSWORD = process.env.SESSION_SECRET || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || process.env.SESSION_SECRET || "";
 
 router.post("/login", (req, res) => {
   const { password } = req.body as { password?: string };

@@ -10,7 +10,7 @@ A full-stack MLM/referral system with a Telegram bot that guides users through a
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `PROXY_API_KEY`, `SESSION_SECRET`
+- Required env: `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `PROXY_API_KEY`, `SESSION_SECRET`, `ADMIN_PASSWORD`
 
 ## Stack
 
