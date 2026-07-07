@@ -59,18 +59,14 @@ async function getActivePartner(userId: number) {
   return null;
 }
 
-// Reply Keyboard — only "Menu" button, opens inline menu on tap
+// Reply Keyboard — single "☰ Меню" button at bottom, opens inline menu on tap
 function getReplyKeyboard() {
-  return { keyboard: [[{ text: "🏠 Меню" }]], resize_keyboard: true };
-}
-
-async function sendKeyboardOnce(bot: TelegramBot, chatId: number) {
-  await bot.sendMessage(chatId, "\u23ee \u041dажми «Меню» внизу для доступа к функциям бота", { reply_markup: getReplyKeyboard() });
+  return { keyboard: [[{ text: "☰ Меню" }]], resize_keyboard: true };
 }
 
 // Reply keyboard text → callback action
 const REPLY_ACTIONS: Record<string, string> = {
-  "🏠 Меню": "menu_main",
+  "☰ Меню": "menu_main",
 };
 
 async function notifyPartner(bot: TelegramBot, partnerId: number, text: string) {
@@ -176,7 +172,7 @@ async function notifyAdmins(bot: TelegramBot, text: string) {
 
 async function handleIntro(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "intro_video");
-  await bot.sendMessage(chatId, TEXTS.intro, { parse_mode: "Markdown" });
+  await bot.sendMessage(chatId, TEXTS.intro, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await sendVideo(bot, chatId, "intro_video");
   await bot.sendMessage(chatId, "Готов начать разбор?", {
     reply_markup: { inline_keyboard: [[{ text: "▶️ Начать", callback_data: "start_depth_choice" }]] }
@@ -307,7 +303,6 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       await db.update(userSessionsTable).set({ refCode, partnerId, updatedAt: new Date() }).where(eq(userSessionsTable.id, existing[0].id));
     }
     const session = await getOrCreateSession(userId, username, firstName, lastName, refCode);
-    await sendKeyboardOnce(bot, chatId);
     await handleIntro(bot, chatId, session);
     return;
   }
@@ -541,7 +536,6 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "restart_confirm") {
     await db.update(userSessionsTable).set({ currentStage: "intro", menuShown: false, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-    await sendKeyboardOnce(bot, chatId);
     await handleIntro(bot, chatId, { ...session, currentStage: "intro" });
     return;
   }
