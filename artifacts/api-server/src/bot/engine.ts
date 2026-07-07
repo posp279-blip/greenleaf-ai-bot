@@ -49,7 +49,7 @@ async function getActivePartner(userId: number) {
 
   // Fallback: check session partnerId (for users who became partners via web/TG admin)
   const sessions = await db.select().from(userSessionsTable).where(
-    and(eq(userSessionsTable.telegramUserId, userId), eq(userSessionsTable.isCompleted, true))
+    eq(userSessionsTable.telegramUserId, userId)
   );
   if (sessions[0]?.partnerId) {
     const p = await db.select().from(partnersTable).where(
@@ -279,6 +279,11 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
   if (text === "/menu") {
     const session = await getOrCreateSession(userId, username, firstName, lastName);
     await showMainMenu(bot, chatId, session, await isAdmin(userId), await getActivePartner(userId));
+    return;
+  }
+
+  if (text === "/id") {
+    await bot.sendMessage(chatId, `Твой Telegram ID: \`${userId}\`\n\nСообщи это число администратору, если тебе нужно привязать аккаунт.`, { parse_mode: "Markdown" });
     return;
   }
 

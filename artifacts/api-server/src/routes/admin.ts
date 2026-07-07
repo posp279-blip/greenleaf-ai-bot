@@ -116,8 +116,16 @@ router.post("/partners", async (req, res) => {
 
 router.patch("/partners/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { isActive, name, telegram, phone } = req.body as { isActive?: boolean; name?: string; telegram?: string; phone?: string };
-  const [updated] = await db.update(partnersTable).set({ isActive, name, telegram, phone, updatedAt: new Date() }).where(eq(partnersTable.id, id)).returning();
+  const { isActive, name, telegram, phone, telegramUserId } = req.body as { isActive?: boolean; name?: string; telegram?: string; phone?: string; telegramUserId?: number | null };
+  const [updated] = await db.update(partnersTable).set({ isActive, name, telegram, phone, telegramUserId, updatedAt: new Date() }).where(eq(partnersTable.id, id)).returning();
+
+  // Also update user session partnerId when telegramUserId is set
+  if (telegramUserId) {
+    await db.update(userSessionsTable)
+      .set({ partnerId: id, updatedAt: new Date() })
+      .where(eq(userSessionsTable.telegramUserId, telegramUserId));
+  }
+
   res.json(updated);
 });
 

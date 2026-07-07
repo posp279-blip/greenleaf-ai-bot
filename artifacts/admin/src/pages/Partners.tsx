@@ -10,6 +10,8 @@ export default function PartnersPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", refCode: "", telegram: "", phone: "" });
+  const [editingPartner, setEditingPartner] = useState<typeof partners[0] | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", refCode: "", telegram: "", phone: "", telegramUserId: "" });
 
   return (
     <div className="space-y-6">
@@ -42,18 +44,27 @@ export default function PartnersPage() {
                     <a href={p.partnerLink} target="_blank" rel="noopener noreferrer">{p.partnerLink}</a>
                   </div>
                 )}
-                <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                <div className="flex gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
                   {p.telegram && <span>TG: {p.telegram}</span>}
                   {p.phone && <span>📞 {p.phone}</span>}
                   <span>Заявок: <strong className="text-foreground">{p.leadsCount}</strong></span>
+                  <span>TG ID: <code className="bg-muted px-1 rounded">{p.telegramUserId ?? "—"}</code></span>
                 </div>
               </div>
-              <button
-                onClick={() => updatePartner.mutate({ id: p.id, data: { isActive: !p.isActive } })}
-                className={`text-sm px-3 py-1.5 rounded-lg border transition ${p.isActive ? "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive" : "hover:bg-primary hover:text-primary-foreground hover:border-primary"}`}
-              >
-                {p.isActive ? "Деактивировать" : "Активировать"}
-              </button>
+              <div className="flex flex-col gap-2 items-end">
+                <button
+                  onClick={() => updatePartner.mutate({ id: p.id, data: { isActive: !p.isActive } })}
+                  className={`text-sm px-3 py-1.5 rounded-lg border transition ${p.isActive ? "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive" : "hover:bg-primary hover:text-primary-foreground hover:border-primary"}`}
+                >
+                  {p.isActive ? "Деактивировать" : "Активировать"}
+                </button>
+                <button
+                  onClick={() => { setEditingPartner(p); setEditForm({ name: p.name, refCode: p.refCode, telegram: p.telegram || "", phone: p.phone || "", telegramUserId: p.telegramUserId != null ? String(p.telegramUserId) : "" }); }}
+                  className="text-xs px-3 py-1 rounded-lg border hover:bg-muted transition"
+                >
+                  ✏️ Редактировать
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -76,6 +87,41 @@ export default function PartnersPage() {
                 className="flex-1 bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm hover:opacity-90 transition disabled:opacity-50"
               >
                 {createPartner.isPending ? "..." : "Создать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingPartner && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-xl border p-6 w-96 shadow-xl space-y-4">
+            <h2 className="font-bold text-lg">Редактировать партнёра</h2>
+            <input type="text" placeholder="Имя" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <input type="text" placeholder="refCode" value={editForm.refCode} onChange={(e) => setEditForm({ ...editForm, refCode: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <input type="text" placeholder="Telegram (@username)" value={editForm.telegram} onChange={(e) => setEditForm({ ...editForm, telegram: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <input type="text" placeholder="Телефон" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <input type="text" placeholder="Telegram ID (число) — для привязки бота" value={editForm.telegramUserId} onChange={(e) => setEditForm({ ...editForm, telegramUserId: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <div className="text-xs text-muted-foreground">
+              Telegram ID позволяет пользователю видеть партнёрское меню в боте. Если не заполнен — напишите его или попросите партнёра написать <code className="bg-muted px-1 rounded">/id</code> боту.
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setEditingPartner(null)} className="flex-1 border rounded-lg px-4 py-2 text-sm hover:bg-muted transition">Отмена</button>
+              <button
+                onClick={() => {
+                  const tid = editForm.telegramUserId.trim() ? parseInt(editForm.telegramUserId.trim(), 10) : null;
+                  updatePartner.mutate({ id: editingPartner.id, data: {
+                    name: editForm.name,
+                    refCode: editForm.refCode,
+                    telegram: editForm.telegram || undefined,
+                    phone: editForm.phone || undefined,
+                    telegramUserId: tid && !isNaN(tid) ? tid : null,
+                  } });
+                  setEditingPartner(null);
+                }}
+                className="flex-1 bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm hover:opacity-90 transition"
+              >
+                Сохранить
               </button>
             </div>
           </div>

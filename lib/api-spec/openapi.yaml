@@ -613,6 +613,8 @@ components:
           type: string
         phone:
           type: string
+        telegramUserId:
+          type: ["integer", "null"]
         isActive:
           type: boolean
 

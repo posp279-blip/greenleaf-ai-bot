@@ -232,6 +232,7 @@ export const UpdatePartnerBody = zod.object({
   "name": zod.string().optional(),
   "telegram": zod.string().optional(),
   "phone": zod.string().optional(),
+  "telegramUserId": zod.number().nullish(),
   "isActive": zod.boolean().optional()
 })
 

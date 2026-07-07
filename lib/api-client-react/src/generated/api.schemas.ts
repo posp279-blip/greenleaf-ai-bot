@@ -121,6 +121,8 @@ export interface PartnerUpdate {
   name?: string;
   telegram?: string;
   phone?: string;
+  /** @nullable */
+  telegramUserId?: number | null;
   isActive?: boolean;
 }
 
