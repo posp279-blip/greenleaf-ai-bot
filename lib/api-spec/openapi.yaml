@@ -1,22 +1,36 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Greenleaf Admin API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: stats
+    description: Statistics
+  - name: sessions
+    description: User sessions
+  - name: leads
+    description: Leads
+  - name: partners
+    description: Partners
+  - name: videos
+    description: Video blocks
+  - name: calculator
+    description: Calculator items
+  - name: settings
+    description: App settings
+  - name: ai
+    description: AI status
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +38,393 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /admin/stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
+  /admin/sessions:
+    get:
+      operationId: getSessions
+      tags: [sessions]
+      summary: List user sessions
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sessions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSession"
+
+  /admin/sessions/{id}/messages:
+    get:
+      operationId: getSessionMessages
+      tags: [sessions]
+      summary: Get messages for a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Messages list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BotMessage"
+
+  /admin/leads:
+    get:
+      operationId: getLeads
+      tags: [leads]
+      summary: List leads
+      parameters:
+        - name: partnerId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Leads list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+
+  /admin/leads/{id}:
+    get:
+      operationId: getLead
+      tags: [leads]
+      summary: Get a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update lead status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadStatusUpdate"
+      responses:
+        "200":
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /admin/leads/{id}/convert-to-partner:
+    post:
+      operationId: convertLeadToPartner
+      tags: [leads]
+      summary: Convert lead to partner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConvertLeadInput"
+      responses:
+        "200":
+          description: Created partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+
+  /admin/partners:
+    get:
+      operationId: getPartners
+      tags: [partners]
+      summary: List partners
+      responses:
+        "200":
+          description: Partners list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PartnerWithStats"
+    post:
+      operationId: createPartner
+      tags: [partners]
+      summary: Create partner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerInput"
+      responses:
+        "200":
+          description: Created partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+
+  /admin/partners/{id}:
+    patch:
+      operationId: updatePartner
+      tags: [partners]
+      summary: Update partner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerUpdate"
+      responses:
+        "200":
+          description: Updated partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+
+  /admin/partners/{id}/leads:
+    get:
+      operationId: getPartnerLeads
+      tags: [partners]
+      summary: Get leads for a partner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Partner leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+
+  /admin/video-blocks:
+    get:
+      operationId: getVideoBlocks
+      tags: [videos]
+      summary: List video blocks
+      responses:
+        "200":
+          description: Video blocks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VideoBlock"
+
+  /admin/video-blocks/{id}:
+    patch:
+      operationId: updateVideoBlock
+      tags: [videos]
+      summary: Update video block
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoBlockUpdate"
+      responses:
+        "200":
+          description: Updated video block
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoBlock"
+
+  /admin/calculator:
+    get:
+      operationId: getCalculator
+      tags: [calculator]
+      summary: Get calculator data
+      responses:
+        "200":
+          description: Calculator data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculatorData"
+
+  /admin/calculator/{id}:
+    patch:
+      operationId: updateCalculatorItem
+      tags: [calculator]
+      summary: Update calculator item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalculatorItemUpdate"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculatorItem"
+
+  /admin/settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get all settings
+      responses:
+        "200":
+          description: Settings map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+
+  /admin/settings/{key}:
+    put:
+      operationId: updateSetting
+      tags: [settings]
+      summary: Update a setting
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingInput"
+      responses:
+        "200":
+          description: Updated setting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingResult"
+
+  /admin/ai/status:
+    get:
+      operationId: getAiStatus
+      tags: [ai]
+      summary: Get AI status
+      responses:
+        "200":
+          description: AI status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiStatus"
+
+  /admin/ai/test:
+    post:
+      operationId: testAi
+      tags: [ai]
+      summary: Test AI connection
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiTestResult"
+
+  /admin/ai/logs:
+    get:
+      operationId: getAiLogs
+      tags: [ai]
+      summary: Get AI logs
+      responses:
+        "200":
+          description: AI logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiLog"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +435,343 @@ components:
       required:
         - status
 
+    Stats:
+      type: object
+      required: [totalUsers, completedScenario, totalLeads, registeredLeads, totalPartners, conversionToLead, conversionToPartner, stageCounts]
+      properties:
+        totalUsers:
+          type: integer
+        completedScenario:
+          type: integer
+        totalLeads:
+          type: integer
+        registeredLeads:
+          type: integer
+        totalPartners:
+          type: integer
+        conversionToLead:
+          type: integer
+        conversionToPartner:
+          type: integer
+        stageCounts:
+          type: object
+          additionalProperties:
+            type: integer
+
+    UserSession:
+      type: object
+      required: [id, telegramUserId, currentStage, isCompleted, menuShown, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        telegramUserId:
+          type: integer
+        username:
+          type: ["string", "null"]
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        refCode:
+          type: ["string", "null"]
+        partnerId:
+          type: ["integer", "null"]
+        currentStage:
+          type: string
+        depthMode:
+          type: ["string", "null"]
+        familyAdults:
+          type: ["integer", "null"]
+        leadId:
+          type: ["integer", "null"]
+        isCompleted:
+          type: boolean
+        menuShown:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+
+    BotMessage:
+      type: object
+      required: [id, sessionId, role, content, createdAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        stage:
+          type: ["string", "null"]
+        intent:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    Lead:
+      type: object
+      required: [id, sessionId, name, contact, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        partnerId:
+          type: ["integer", "null"]
+        name:
+          type: string
+        contact:
+          type: string
+        comment:
+          type: ["string", "null"]
+        status:
+          type: string
+        convertedPartnerId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    LeadStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    ConvertLeadInput:
+      type: object
+      required: [refCode]
+      properties:
+        refCode:
+          type: string
+
+    Partner:
+      type: object
+      required: [id, name, refCode, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        telegram:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        refCode:
+          type: string
+        telegramUserId:
+          type: ["integer", "null"]
+        sponsorPartnerId:
+          type: ["integer", "null"]
+        sourceLeadId:
+          type: ["integer", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    PartnerWithStats:
+      allOf:
+        - $ref: "#/components/schemas/Partner"
+        - type: object
+          required: [leadsCount, partnerLink]
+          properties:
+            leadsCount:
+              type: integer
+            partnerLink:
+              type: string
+
+    PartnerInput:
+      type: object
+      required: [name, refCode]
+      properties:
+        name:
+          type: string
+        telegram:
+          type: string
+        phone:
+          type: string
+        refCode:
+          type: string
+
+    PartnerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        telegram:
+          type: string
+        phone:
+          type: string
+        isActive:
+          type: boolean
+
+    VideoBlock:
+      type: object
+      required: [id, key, stage, title, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        stage:
+          type: string
+        title:
+          type: string
+        url:
+          type: ["string", "null"]
+        providerType:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    VideoBlockUpdate:
+      type: object
+      properties:
+        url:
+          type: string
+        isActive:
+          type: boolean
+        title:
+          type: string
+
+    CalculatorItem:
+      type: object
+      required: [id, category, massMarketYearPrice, greenleafYearPrice, savingYear, order, isActive]
+      properties:
+        id:
+          type: integer
+        category:
+          type: string
+        massMarketYearPrice:
+          type: integer
+        greenleafYearPrice:
+          type: integer
+        savingYear:
+          type: integer
+        familyMultiplier:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        order:
+          type: integer
+        isActive:
+          type: boolean
+
+    CalculatorData:
+      type: object
+      required: [items, totals, family4]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalculatorItem"
+        totals:
+          type: object
+          required: [mass, green, saving]
+          properties:
+            mass:
+              type: integer
+            green:
+              type: integer
+            saving:
+              type: integer
+        family4:
+          type: object
+          required: [mass, green, saving]
+          properties:
+            mass:
+              type: integer
+            green:
+              type: integer
+            saving:
+              type: integer
+
+    CalculatorItemUpdate:
+      type: object
+      properties:
+        massMarketYearPrice:
+          type: integer
+        greenleafYearPrice:
+          type: integer
+        isActive:
+          type: boolean
+
+    SettingInput:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+
+    SettingResult:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+
+    AiStatus:
+      type: object
+      required: [available, hasKey, baseUrl, model, aiEnabled]
+      properties:
+        available:
+          type: boolean
+        hasKey:
+          type: boolean
+        baseUrl:
+          type: string
+        model:
+          type: string
+        aiEnabled:
+          type: boolean
+
+    AiTestResult:
+      type: object
+      required: [available, message]
+      properties:
+        available:
+          type: boolean
+        message:
+          type: string
+
+    AiLog:
+      type: object
+      required: [id, promptType, input, success, createdAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: ["integer", "null"]
+        promptType:
+          type: string
+        input:
+          type: string
+        output:
+          type: ["string", "null"]
+        provider:
+          type: ["string", "null"]
+        success:
+          type: boolean
+        error:
+          type: ["string", "null"]
+        createdAt:
+          type: string

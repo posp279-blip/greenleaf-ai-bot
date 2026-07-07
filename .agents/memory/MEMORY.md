@@ -1,0 +1,3 @@
+- [Express 5 route return pattern](express5-routes.md) — use `{ res.status(...); return; }` not `return res.status(...)` to avoid TS7030 errors
+- [Telegram bot import pattern](telegram-bot-imports.md) — import TelegramBot default + named types separately; TelegramBot is only a type namespace, not a value namespace
+- [Proxy API AI integration](proxy-api-ai.md) — AI never changes bot stage; only classifies intent/generates reactions; base URL https://api.proxyapi.ru/openai/v1
