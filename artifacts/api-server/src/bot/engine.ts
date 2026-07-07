@@ -676,12 +676,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
         await bot.sendMessage(
           sessionRow.telegramUserId,
           `🎉 Поздравляем\! Ты теперь партнёр Greenleaf\!\n\nТвоя реферальная ссылка:\n${escapeMarkdown(link)}\n\nОткрой меню бота и нажми "📞 Партнёрам" — там всё для работы с ссылкой\.`,
-          {
-            reply_markup: {
-              keyboard: [[{ text: "☀ Меню" }]],
-              resize_keyboard: true,
-            },
-          }
+          { reply_markup: getReplyKeyboard() }
         );
       } catch (err) {
         // ignore if blocked
