@@ -158,6 +158,7 @@ async function handleDepthChoice(bot: TelegramBot, chatId: number, session: BotS
         [{ text: "⚡ Быстро по сути", callback_data: "depth_quick" }],
         [{ text: "🔍 Подробно", callback_data: "depth_detailed" }],
         [{ text: "💰 Сначала хочу увидеть экономию", callback_data: "depth_savings" }],
+        [{ text: "🏠 Главное меню", callback_data: "menu_main" }],
       ]
     }
   });
@@ -259,6 +260,12 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
     }
     const session = await getOrCreateSession(userId, username, firstName, lastName, refCode);
     await handleIntro(bot, chatId, session);
+    return;
+  }
+
+  if (text === "/menu") {
+    const session = await getOrCreateSession(userId, username, firstName, lastName);
+    await showMainMenu(bot, chatId, session, await isAdmin(userId), await getActivePartner(userId));
     return;
   }
 
@@ -429,7 +436,10 @@ async function handleLeadInput(bot: TelegramBot, chatId: number, userId: number,
 
     await db.update(adminStateTable).set({ mode: "idle", pendingAction: null, payload: null, updatedAt: new Date() }).where(eq(adminStateTable.telegramUserId, userId));
 
-    await bot.sendMessage(chatId, TEXTS.leadDone, { parse_mode: "Markdown" });
+    await bot.sendMessage(chatId, TEXTS.leadDone, {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: [[{ text: "🏠 Главное меню", callback_data: "menu_main" }], [{ text: "📋 Моя заявка", callback_data: "menu_my_lead" }], [{ text: "❓ Задать вопрос", callback_data: "menu_question" }]] }
+    });
     await saveMessage(session.id, "bot", TEXTS.leadDone, "completed");
 
     let partnerInfo = "не указан";
@@ -458,10 +468,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   // ── Menu ──
   if (data === "menu_main") {
-    await bot.sendMessage(chatId, `🏠 *Главное*\n\nЭтап: \`${session.currentStage}\`\n\nЧто хочешь сделать?`, {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "▶️ Продолжить", callback_data: "menu_continue" }], [{ text: "🔄 Начать заново", callback_data: "restart_confirm" }]] }
-    });
+    await showMainMenu(bot, chatId, session, adminFlag, partner);
     return;
   }
 
@@ -801,6 +808,60 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     return;
   }
   if (data === "family_q") { await handleFamilyQuestion(bot, chatId, session); return; }
+}
+
+async function showMainMenu(
+  bot: TelegramBot,
+  chatId: number,
+  session: BotSession,
+  isAdminFlag: boolean,
+  partner: typeof partnersTable.$inferSelect | null
+) {
+  const rows: InlineKeyboardButton[][] = [];
+
+  // First row — scenario or calc
+  if (session.isCompleted) {
+    rows.push([{ text: "📊 Калькулятор", callback_data: "menu_calc" }]);
+  } else {
+    rows.push([{ text: "▶️ Продолжить разбор", callback_data: "menu_continue" }]);
+  }
+
+  // Second row — common actions
+  const commonRow: InlineKeyboardButton[] = [];
+  commonRow.push({ text: "📋 Моя заявка", callback_data: "menu_my_lead" });
+  commonRow.push({ text: "❓ Задать вопрос", callback_data: "menu_question" });
+  rows.push(commonRow);
+
+  rows.push([{ text: "📞 Связаться", callback_data: "menu_contact" }]);
+
+  // Partner row
+  if (partner) {
+    rows.push([
+      { text: "🔗 Моя ссылка", callback_data: "partner_link" },
+      { text: "📋 Мои заявки", callback_data: "partner_leads" },
+    ]);
+    rows.push([
+      { text: "📊 Моя статистика", callback_data: "partner_stats" },
+      { text: "📤 Как отправить", callback_data: "partner_how" },
+    ]);
+  }
+
+  // Admin
+  if (isAdminFlag) {
+    rows.push([{ text: "⚙️ Админ-панель", callback_data: "admin_menu" }]);
+  }
+
+  // Restart always at bottom
+  rows.push([{ text: "🔄 Начать заново", callback_data: "restart_confirm" }]);
+
+  const title = partner
+    ? `🏠 *Главное меню*\n\nПривет, *${partner.name}*! Ты партнёр Greenleaf.\n\nЭтап: \`${session.currentStage}\``
+    : `🏠 *Главное меню*\n\nЭтап: \`${session.currentStage}\``;
+
+  await bot.sendMessage(chatId, title, {
+    parse_mode: "Markdown",
+    reply_markup: { inline_keyboard: rows },
+  });
 }
 
 async function continueFromStage(bot: TelegramBot, chatId: number, session: BotSession) {
