@@ -616,9 +616,76 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     if (!partner) { await bot.sendMessage(chatId, TEXTS.noPartnerLink); return; }
     const leads = await db.select().from(leadsTable).where(eq(leadsTable.partnerId, partner.id));
     if (leads.length === 0) { await bot.sendMessage(chatId, "📋 Заявок по твоей ссылке пока нет."); return; }
-    let t = "📋 *Твои заявки:*\n\n";
-    for (const l of leads) t += `• ${l.name} — *${l.status}* (${l.createdAt.toLocaleDateString("ru")})\n`;
-    await bot.sendMessage(chatId, t, { parse_mode: "Markdown" });
+    for (const l of leads) {
+      const rows: InlineKeyboardButton[][] = [];
+      let msg = `📋 *${escapeMarkdown(l.name)}*\nКонтакт: ${escapeMarkdown(l.contact)}\nСтатус: *${escapeMarkdown(l.status)}*\nДата: ${escapeMarkdown(l.createdAt.toLocaleDateString("ru"))}`;
+      if (l.status === "новая") {
+        rows.push([{ text: "✅ Регистрировать как партнёра", callback_data: `partner_register_${l.id}` }]);
+      }
+      rows.push([{ text: "← Назад", callback_data: "menu_main" }]);
+      await bot.sendMessage(chatId, msg, { parse_mode: "MarkdownV2", reply_markup: { inline_keyboard: rows } });
+    }
+    return;
+  }
+
+  if (data.startsWith("partner_register_")) {
+    if (!partner) { await bot.sendMessage(chatId, TEXTS.noPartnerLink); return; }
+    const leadId = parseInt(data.replace("partner_register_", ""), 10);
+    const lead = (await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)))[0];
+    if (!lead || lead.partnerId !== partner.id) { await bot.sendMessage(chatId, "⚠️ Заявка не найдена."); return; }
+    if (lead.status !== "новая") { await bot.sendMessage(chatId, "⚠️ Заявка уже обработана."); return; }
+
+    // Generate unique refCode
+    const baseRef = (lead.name || "partner").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "user";
+    let refCode = baseRef;
+    let suffix = 1;
+    while ((await db.select().from(partnersTable).where(eq(partnersTable.refCode, refCode))).length > 0) {
+      refCode = `${baseRef}${suffix}`;
+      suffix++;
+    }
+
+    const sessionRow = (await db.select().from(userSessionsTable).where(eq(userSessionsTable.id, lead.sessionId)))[0];
+    const [newPartner] = await db.insert(partnersTable).values({
+      name: lead.name,
+      telegram: lead.contact.startsWith("@") ? lead.contact : null,
+      phone: !lead.contact.startsWith("@") ? lead.contact : null,
+      refCode,
+      telegramUserId: sessionRow?.telegramUserId || null,
+      sponsorPartnerId: partner.id,
+      sourceLeadId: lead.id,
+      isActive: true,
+    }).returning();
+
+    // Update user sessions
+    if (sessionRow?.telegramUserId) {
+      await db.update(userSessionsTable)
+        .set({ partnerId: newPartner.id, updatedAt: new Date() })
+        .where(eq(userSessionsTable.telegramUserId, sessionRow.telegramUserId));
+    }
+
+    await db.update(leadsTable).set({ convertedPartnerId: newPartner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, leadId));
+
+    // Notify the new partner
+    const botUsername = await getSetting("bot_username");
+    if (botUsername && sessionRow?.telegramUserId) {
+      const link = `https://t.me/${botUsername}?start=${newPartner.refCode}`;
+      try {
+        await bot.sendMessage(
+          sessionRow.telegramUserId,
+          `🎉 Поздравляем\! Ты теперь партнёр Greenleaf\!\n\nТвоя реферальная ссылка:\n${escapeMarkdown(link)}\n\nОткрой меню бота и нажми "📞 Партнёрам" — там всё для работы с ссылкой\.`,
+          {
+            reply_markup: {
+              keyboard: [[{ text: "☀ Меню" }]],
+              resize_keyboard: true,
+            },
+          }
+        );
+      } catch (err) {
+        // ignore if blocked
+      }
+    }
+
+    await bot.sendMessage(chatId, `✅ ${escapeMarkdown(lead.name)} зарегистрирован как партнёр\!\nrefCode: \`${escapeMarkdown(refCode)}\``, { parse_mode: "MarkdownV2" });
     return;
   }
 
