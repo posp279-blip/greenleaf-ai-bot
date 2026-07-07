@@ -11,7 +11,7 @@ import {
   adminStateTable,
   calculatorItemsTable,
 } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { classifyText, detectBrandName } from "./classifier.js";
 import { classifyUserInput, generateReaction, answerQuestion, isAiAvailable } from "./ai.js";
@@ -43,19 +43,26 @@ async function isAdmin(userId: number): Promise<boolean> {
 }
 
 async function getActivePartner(userId: number) {
-  const rows = await db.select().from(partnersTable).where(
-    and(eq(partnersTable.telegramUserId, userId), eq(partnersTable.isActive, true))
-  );
-  if (rows[0]) return rows[0];
+  // 1. Respect session's partnerId first (binds stats to the link that brought the user)
   const sessions = await db.select().from(userSessionsTable).where(
     eq(userSessionsTable.telegramUserId, userId)
   );
   if (sessions[0]?.partnerId) {
     const p = await db.select().from(partnersTable).where(
-      and(eq(partnersTable.id, sessions[0].partnerId), eq(partnersTable.isActive, true))
+      eq(partnersTable.id, sessions[0].partnerId)
     );
     if (p[0]) return p[0];
   }
+  // 2. Fallback to active partner by telegramUserId
+  const rows = await db.select().from(partnersTable).where(
+    and(eq(partnersTable.telegramUserId, userId), eq(partnersTable.isActive, true))
+  );
+  if (rows[0]) return rows[0];
+  // 3. Fallback to any partner for this user (including inactive)
+  const all = await db.select().from(partnersTable).where(
+    eq(partnersTable.telegramUserId, userId)
+  );
+  if (all[0]) return all[0];
   return null;
 }
 
@@ -614,12 +621,23 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "partner_leads") {
     if (!partner) { await bot.sendMessage(chatId, TEXTS.noPartnerLink); return; }
-    const leads = await db.select().from(leadsTable).where(eq(leadsTable.partnerId, partner.id));
-    if (leads.length === 0) { await bot.sendMessage(chatId, "📋 Заявок по твоей ссылке пока нет."); return; }
-    for (const l of leads) {
+    // Own leads + leads of referrals this partner registered
+    const ownLeads = await db.select().from(leadsTable).where(eq(leadsTable.partnerId, partner.id));
+    const sponsoredPartners = await db.select({ sourceLeadId: partnersTable.sourceLeadId }).from(partnersTable).where(eq(partnersTable.sponsorPartnerId, partner.id));
+    const sponsoredLeadIds = sponsoredPartners.map(p => p.sourceLeadId).filter(Boolean) as number[];
+    let referralLeads: typeof ownLeads = [];
+    if (sponsoredLeadIds.length > 0) {
+      referralLeads = await db.select().from(leadsTable).where(inArray(leadsTable.id, sponsoredLeadIds));
+    }
+    const allLeads = [...ownLeads, ...referralLeads.filter(l => !ownLeads.some(ol => ol.id === l.id))];
+    if (allLeads.length === 0) { await bot.sendMessage(chatId, "📋 Заявок пока нет."); return; }
+    for (const l of allLeads) {
       const rows: InlineKeyboardButton[][] = [];
-      let msg = `📋 *${escapeMarkdown(l.name)}*\nКонтакт: ${escapeMarkdown(l.contact)}\nСтатус: *${escapeMarkdown(l.status)}*\nДата: ${escapeMarkdown(l.createdAt.toLocaleDateString("ru"))}`;
-      if (l.status === "новая") {
+      const isOwn = l.partnerId === partner.id;
+      const prefix = isOwn ? "📋" : "👤";
+      let msg = `${prefix} *${escapeMarkdown(l.name)}*\nКонтакт: ${escapeMarkdown(l.contact)}\nСтатус: *${escapeMarkdown(l.status)}*\nДата: ${escapeMarkdown(l.createdAt.toLocaleDateString("ru"))}`;
+      if (!isOwn) msg += `\n_Зарегистрирован тобой как партнёр_`;
+      if (l.status === "новая" && isOwn) {
         rows.push([{ text: "✅ Регистрировать как партнёра", callback_data: `partner_register_${l.id}` }]);
       }
       rows.push([{ text: "← Назад", callback_data: "menu_main" }]);
@@ -663,7 +681,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
         .where(eq(userSessionsTable.telegramUserId, sessionRow.telegramUserId));
     }
 
-    await db.update(leadsTable).set({ convertedPartnerId: newPartner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, leadId));
+    await db.update(leadsTable).set({ convertedPartnerId: newPartner.id, partnerId: newPartner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, leadId));
 
     // Notify the new partner
     const botUsername = await getSetting("bot_username");
@@ -701,13 +719,41 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "partner_stats") {
     if (!partner) { await bot.sendMessage(chatId, TEXTS.noPartnerLink); return; }
-    const sessions = await db.select().from(userSessionsTable).where(eq(userSessionsTable.partnerId, partner.id));
-    const leads = await db.select().from(leadsTable).where(eq(leadsTable.partnerId, partner.id));
-    const registered = leads.filter((l) => l.status === "зарегистрирован").length;
-    await bot.sendMessage(chatId,
-      `📊 *Статистика:*\n\nПереходов: ${sessions.length}\nЗаявок: ${leads.length}\nЗарегистрированы: ${registered}\nКонверсия: ${sessions.length ? Math.round((leads.length / sessions.length) * 100) : 0}%`,
-      { parse_mode: "Markdown" }
-    );
+    // Direct stats
+    const ownSessions = await db.select().from(userSessionsTable).where(eq(userSessionsTable.partnerId, partner.id));
+    const ownLeads = await db.select().from(leadsTable).where(eq(leadsTable.partnerId, partner.id));
+    const ownRegistered = ownLeads.filter((l) => l.status === "зарегистрирован").length;
+
+    // Referral stats (partners registered by this partner)
+    const sponsoredPartners = await db.select().from(partnersTable).where(eq(partnersTable.sponsorPartnerId, partner.id));
+    let referralLeadsCount = 0;
+    let referralRegistered = 0;
+    if (sponsoredPartners.length > 0) {
+      const spIds = sponsoredPartners.map(p => p.id);
+      const referralLeads = await db.select().from(leadsTable).where(inArray(leadsTable.partnerId, spIds));
+      referralLeadsCount = referralLeads.length;
+      referralRegistered = referralLeads.filter(l => l.status === "зарегистрирован").length;
+    }
+
+    const totalSessions = ownSessions.length;
+    const totalLeads = ownLeads.length + referralLeadsCount;
+    const totalRegistered = ownRegistered + referralRegistered;
+
+    let msg = `📊 *Статистика:*\n\n`;
+    msg += `*\u041cоя ссылка:*\n`;
+    msg += `Переходов: ${totalSessions}\n`;
+    msg += `Заявок: ${ownLeads.length}\n`;
+    msg += `Зарегистрированы: ${ownRegistered}\n`;
+    msg += `Конверсия: ${totalSessions ? Math.round((ownLeads.length / totalSessions) * 100) : 0}%\n\n`;
+    if (sponsoredPartners.length > 0) {
+      msg += `*У моих рефералов (${sponsoredPartners.length}):*\n`;
+      msg += `Их заявок: ${referralLeadsCount}\n`;
+      msg += `Зарегистрированы: ${referralRegistered}\n\n`;
+    }
+    msg += `*ИТОГО:*\n`;
+    msg += `Заявок всего: ${totalLeads}\n`;
+    msg += `Зарегистрировано всего: ${totalRegistered}`;
+    await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
     return;
   }
 

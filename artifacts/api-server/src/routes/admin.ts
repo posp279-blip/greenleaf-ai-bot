@@ -91,7 +91,7 @@ router.post("/leads/:id/convert-to-partner", async (req, res) => {
       .where(eq(userSessionsTable.telegramUserId, session.telegramUserId));
   }
 
-  await db.update(leadsTable).set({ convertedPartnerId: partner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, id));
+  await db.update(leadsTable).set({ convertedPartnerId: partner.id, partnerId: partner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, id));
 
   // Notify user in Telegram that they are now a partner
   const bot = getBot();
