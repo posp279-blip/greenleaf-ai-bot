@@ -172,6 +172,16 @@ router.patch("/partners/:id", async (req, res) => {
   res.json(updated);
 });
 
+router.delete("/partners/:id", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  // Remove partnerId from associated sessions and leads to avoid FK issues
+  await db.update(userSessionsTable).set({ partnerId: null, updatedAt: new Date() }).where(eq(userSessionsTable.partnerId, id));
+  await db.update(leadsTable).set({ partnerId: null, updatedAt: new Date() }).where(eq(leadsTable.partnerId, id));
+  await db.update(partnersTable).set({ sponsorPartnerId: null, updatedAt: new Date() }).where(eq(partnersTable.sponsorPartnerId, id));
+  await db.delete(partnersTable).where(eq(partnersTable.id, id));
+  res.json({ success: true });
+});
+
 router.get("/partners/:id/leads", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const leads = await db.select().from(leadsTable).where(eq(leadsTable.partnerId, id)).orderBy(desc(leadsTable.createdAt));

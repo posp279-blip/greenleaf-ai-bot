@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useGetPartners, useCreatePartner, useUpdatePartner, getGetPartnersQueryKey } from "@workspace/api-client-react";
+import { useGetPartners, useCreatePartner, useUpdatePartner, useDeletePartner, getGetPartnersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function PartnersPage() {
@@ -7,6 +7,7 @@ export default function PartnersPage() {
   const { data: partners = [], isLoading } = useGetPartners();
   const createPartner = useCreatePartner({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }); setShowCreate(false); setForm({ name: "", refCode: "", telegram: "", phone: "" }); } } });
   const updatePartner = useUpdatePartner({ mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }) } });
+  const deletePartner = useDeletePartner({ mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }) } });
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", refCode: "", telegram: "", phone: "" });
@@ -63,6 +64,17 @@ export default function PartnersPage() {
                   className="text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition flex-1 sm:flex-none"
                 >
                   ✏️ Редактировать
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Удалить партнёра "${p.name}"? Это необратимо.`)) {
+                      deletePartner.mutate({ id: p.id });
+                    }
+                  }}
+                  disabled={deletePartner.isPending}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground transition flex-1 sm:flex-none disabled:opacity-50"
+                >
+                  🗑️ Удалить
                 </button>
               </div>
             </div>

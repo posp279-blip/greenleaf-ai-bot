@@ -28,6 +28,7 @@ import type {
   CalculatorItem,
   CalculatorItemUpdate,
   ConvertLeadInput,
+  DeletePartner200,
   GetLeadsParams,
   GetSessionsParams,
   GetSettings200,
@@ -907,6 +908,76 @@ export const useUpdatePartner = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdatePartnerMutationOptions(options));
+    }
+
+export const getDeletePartnerUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/partners/${id}`
+}
+
+/**
+ * @summary Delete partner
+ */
+export const deletePartner = async (id: number, options?: RequestInit): Promise<DeletePartner200> => {
+
+  return customFetch<DeletePartner200>(getDeletePartnerUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeletePartnerMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePartner>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePartner>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deletePartner'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePartner>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deletePartner(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePartnerMutationResult = NonNullable<Awaited<ReturnType<typeof deletePartner>>>
+
+    export type DeletePartnerMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete partner
+ */
+export const useDeletePartner = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePartner>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePartner>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeletePartnerMutationOptions(options));
     }
 
 export const getGetPartnerLeadsUrl = (id: number,) => {

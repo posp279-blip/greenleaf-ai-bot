@@ -244,6 +244,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Partner"
+    delete:
+      operationId: deletePartner
+      tags: [partners]
+      summary: Delete partner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
 
   /admin/partners/{id}/leads:
     get:

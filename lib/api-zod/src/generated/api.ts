@@ -252,6 +252,18 @@ export const UpdatePartnerResponse = zod.object({
 
 
 /**
+ * @summary Delete partner
+ */
+export const DeletePartnerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeletePartnerResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
  * @summary Get leads for a partner
  */
 export const GetPartnerLeadsParams = zod.object({

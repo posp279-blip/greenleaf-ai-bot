@@ -16,6 +16,7 @@ export * from './calculatorDataTotals';
 export * from './calculatorItem';
 export * from './calculatorItemUpdate';
 export * from './convertLeadInput';
+export * from './deletePartner200';
 export * from './getLeadsParams';
 export * from './getSessionsParams';
 export * from './getSettings200';

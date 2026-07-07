@@ -234,5 +234,9 @@ partnerId?: number;
 status?: string;
 };
 
+export type DeletePartner200 = {
+  success?: boolean;
+};
+
 export type GetSettings200 = {[key: string]: string};
 
