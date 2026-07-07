@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { isAiAvailable } from "../bot/ai.js";
+import { getBot } from "../bot/index.js";
 
 const router = Router();
 
@@ -91,6 +92,28 @@ router.post("/leads/:id/convert-to-partner", async (req, res) => {
   }
 
   await db.update(leadsTable).set({ convertedPartnerId: partner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, id));
+
+  // Notify user in Telegram that they are now a partner
+  const bot = getBot();
+  const botUsername = (await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "bot_username")))[0]?.value || "";
+  if (bot && session?.telegramUserId && botUsername) {
+    const link = `https://t.me/${botUsername}?start=${partner.refCode}`;
+    try {
+      await bot.sendMessage(
+        session.telegramUserId,
+        `🎉 Поздравляем! Ты теперь партнёр Greenleaf!\n\nТвоя реферальная ссылка:\n${link}\n\nОткрой меню бота и нажми "📞 Партнёрам" — там всё для работы с ссылкой.`,
+        {
+          reply_markup: {
+            keyboard: [[{ text: "☀ Меню" }]],
+            resize_keyboard: true,
+          },
+        }
+      );
+    } catch (err) {
+      // Silently ignore if user blocked the bot or unavailable
+    }
+  }
+
   res.json(partner);
 });
 
