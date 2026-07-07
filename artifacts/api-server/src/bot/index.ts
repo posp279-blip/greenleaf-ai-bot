@@ -18,6 +18,14 @@ export async function startBot(): Promise<void> {
   // Run DB migrations/seed
   await seedDatabase();
 
+  // Clear any stale webhook and pending updates so old processes don't steal messages
+  try {
+    const clearWebhook = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`);
+    if (clearWebhook.ok) logger.info("Cleared Telegram webhook and pending updates");
+  } catch (err) {
+    logger.warn({ err }, "Failed to clear webhook — continuing anyway");
+  }
+
   bot = new TelegramBot(token, { polling: true });
 
   // Store bot username in settings
