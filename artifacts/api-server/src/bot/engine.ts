@@ -81,7 +81,7 @@ function getReplyKeyboard(isAdmin: boolean, isPartner: boolean, isCompleted: boo
 }
 
 async function sendKeyboardOnce(bot: TelegramBot, chatId: number, isAdmin: boolean, isPartner: boolean, isCompleted: boolean) {
-  await bot.sendMessage(chatId, "\u200b", { reply_markup: getReplyKeyboard(isAdmin, isPartner, isCompleted) });
+  await bot.sendMessage(chatId, "\u231b Используйте кнопки внизу для быстрого доступа", { reply_markup: getReplyKeyboard(isAdmin, isPartner, isCompleted) });
 }
 
 // Text buttons map to callback actions
