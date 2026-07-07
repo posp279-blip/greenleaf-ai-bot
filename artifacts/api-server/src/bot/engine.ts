@@ -69,11 +69,15 @@ const REPLY_ACTIONS: Record<string, string> = {
   "☰ Меню": "menu_main",
 };
 
+function escapeMarkdown(text: string): string {
+  return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, "\\$1");
+}
+
 async function notifyPartner(bot: TelegramBot, partnerId: number, text: string) {
   const p = await db.select().from(partnersTable).where(eq(partnersTable.id, partnerId));
   if (!p[0]?.telegramUserId) return;
   try {
-    await bot.sendMessage(p[0].telegramUserId, text, { parse_mode: "Markdown" });
+    await bot.sendMessage(p[0].telegramUserId, text, { parse_mode: "MarkdownV2" });
   } catch (err) {
     logger.error({ err, partnerId }, "Partner notify failed");
   }
@@ -164,7 +168,7 @@ async function notifyAdmins(bot: TelegramBot, text: string) {
   if (notifEnabled !== "true") return;
   const adminIds = await getAdminIds();
   for (const adminId of adminIds) {
-    try { await bot.sendMessage(adminId, text, { parse_mode: "Markdown" }); } catch (err) { logger.error({ err, adminId }, "Admin notify failed"); }
+    try { await bot.sendMessage(adminId, text, { parse_mode: "MarkdownV2" }); } catch (err) { logger.error({ err, adminId }, "Admin notify failed"); }
   }
 }
 
@@ -496,17 +500,23 @@ async function handleLeadInput(bot: TelegramBot, chatId: number, userId: number,
       const pRows = await db.select().from(partnersTable).where(eq(partnersTable.id, session.partnerId));
       if (pRows[0]) partnerInfo = `${pRows[0].name} (${pRows[0].refCode})`;
     }
-    const notifText = `🆕 *Новая заявка!*\n\nИмя: ${leadName}\nКонтакт: ${leadContact}\nКомментарий: ${leadComment || "—"}\nПартнёр: ${partnerInfo}\nДата: ${new Date().toLocaleString("ru")}`;
+    const notifText = `🆕 Новая заявка\!
+
+Имя: ${escapeMarkdown(leadName)}
+Контакт: ${escapeMarkdown(leadContact)}
+Комментарий: ${leadComment ? escapeMarkdown(leadComment) : "—"}
+Партнёр: ${escapeMarkdown(partnerInfo)}
+Дата: ${escapeMarkdown(new Date().toLocaleString("ru"))}`;
     await notifyAdmins(bot, notifText);
 
     // Also notify the partner who referred this lead
     if (session.partnerId) {
-      await notifyPartner(bot, session.partnerId, `🆕 *Новая заявка по твоей ссылке!*
+      await notifyPartner(bot, session.partnerId, `🆕 Новая заявка по твоей ссылке\!
 
-Имя: ${leadName}
-Контакт: ${leadContact}
+Имя: ${escapeMarkdown(leadName)}
+Контакт: ${escapeMarkdown(leadContact)}
 Статус: новая
-Дата: ${new Date().toLocaleString("ru")}`);
+Дата: ${escapeMarkdown(new Date().toLocaleString("ru"))}`);
     }
   }
 }
