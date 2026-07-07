@@ -7,15 +7,15 @@ export default function SessionsPage() {
   const { data: messages = [] } = useGetSessionMessages(selectedId!, { query: { enabled: !!selectedId, queryKey: ["sessionMessages", selectedId] } });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Диалоги</h1>
+        <h1 className="text-xl md:text-2xl font-bold">Диалоги</h1>
         <p className="text-sm text-muted-foreground mt-1">{sessions.length} сессий</p>
       </div>
 
       {isLoading && <div className="text-muted-foreground text-center py-8">Загрузка...</div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="space-y-2">
           {sessions.map((s) => (
             <button

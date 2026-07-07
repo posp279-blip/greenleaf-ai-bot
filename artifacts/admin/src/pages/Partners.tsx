@@ -14,13 +14,13 @@ export default function PartnersPage() {
   const [editForm, setEditForm] = useState({ name: "", refCode: "", telegram: "", phone: "", telegramUserId: "" });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Партнёры</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Партнёры</h1>
           <p className="text-sm text-muted-foreground mt-1">{partners.length} партнёров</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition">
+        <button onClick={() => setShowCreate(true)} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition w-full sm:w-auto">
           ➕ Создать
         </button>
       </div>
@@ -30,10 +30,10 @@ export default function PartnersPage() {
       <div className="space-y-3">
         {partners.map((p) => (
           <div key={p.id} className="bg-card border rounded-xl p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{p.name}</span>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-base">{p.name}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                     {p.isActive ? "активен" : "неактивен"}
                   </span>
@@ -44,23 +44,23 @@ export default function PartnersPage() {
                     <a href={p.partnerLink} target="_blank" rel="noopener noreferrer">{p.partnerLink}</a>
                   </div>
                 )}
-                <div className="flex gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                   {p.telegram && <span>TG: {p.telegram}</span>}
                   {p.phone && <span>📞 {p.phone}</span>}
                   <span>Заявок: <strong className="text-foreground">{p.leadsCount}</strong></span>
                   <span>TG ID: <code className="bg-muted px-1 rounded">{p.telegramUserId ?? "—"}</code></span>
                 </div>
               </div>
-              <div className="flex flex-col gap-2 items-end">
+              <div className="flex flex-row sm:flex-col gap-2 sm:items-end shrink-0">
                 <button
                   onClick={() => updatePartner.mutate({ id: p.id, data: { isActive: !p.isActive } })}
-                  className={`text-sm px-3 py-1.5 rounded-lg border transition ${p.isActive ? "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive" : "hover:bg-primary hover:text-primary-foreground hover:border-primary"}`}
+                  className={`text-sm px-3 py-1.5 rounded-lg border transition flex-1 sm:flex-none ${p.isActive ? "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive" : "hover:bg-primary hover:text-primary-foreground hover:border-primary"}`}
                 >
                   {p.isActive ? "Деактивировать" : "Активировать"}
                 </button>
                 <button
                   onClick={() => { setEditingPartner(p); setEditForm({ name: p.name, refCode: p.refCode, telegram: p.telegram || "", phone: p.phone || "", telegramUserId: p.telegramUserId != null ? String(p.telegramUserId) : "" }); }}
-                  className="text-xs px-3 py-1 rounded-lg border hover:bg-muted transition"
+                  className="text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition flex-1 sm:flex-none"
                 >
                   ✏️ Редактировать
                 </button>

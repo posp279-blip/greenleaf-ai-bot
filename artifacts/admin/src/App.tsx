@@ -78,7 +78,7 @@ function Layout() {
           </button>
           <span className="font-bold text-sidebar-primary">🌿 Greenleaf Admin</span>
         </header>
-        <main className="flex-1 overflow-y-auto bg-background p-6">
+        <main className="flex-1 overflow-y-auto bg-background p-3 md:p-6">
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/leads" component={LeadsPage} />

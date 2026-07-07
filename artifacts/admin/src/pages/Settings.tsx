@@ -20,9 +20,9 @@ export default function SettingsPage() {
   const allKeys = settings ? Object.keys(settings) : [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Настройки</h1>
+        <h1 className="text-xl md:text-2xl font-bold">Настройки</h1>
         <p className="text-sm text-muted-foreground mt-1">Конфигурация бота</p>
       </div>
 
@@ -56,8 +56,8 @@ export default function SettingsPage() {
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-xl border p-6 w-[500px] shadow-xl space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-card rounded-xl border p-5 md:p-6 w-full max-w-[500px] shadow-xl space-y-4">
             <h2 className="font-bold text-lg">Изменить настройку</h2>
             <div>
               <label className="text-sm text-muted-foreground block mb-1">{SETTING_LABELS[editing] || editing}</label>

@@ -22,13 +22,13 @@ export default function LeadsPage() {
   const convertLead = useConvertLeadToPartner({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetLeadsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }); setConvertId(null); setRefCode(""); } } });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Заявки</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Заявки</h1>
           <p className="text-sm text-muted-foreground mt-1">{leads.length} заявок</p>
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border rounded-lg px-3 py-2 text-sm bg-card">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border rounded-lg px-3 py-2 text-sm bg-card w-full sm:w-auto">
           <option value="">Все статусы</option>
           {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -39,28 +39,28 @@ export default function LeadsPage() {
       <div className="space-y-3">
         {leads.map((lead) => (
           <div key={lead.id} className="bg-card border rounded-xl p-4">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold">{lead.name}</span>
+                  <span className="font-semibold text-base">{lead.name}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[lead.status] || "bg-gray-100 text-gray-600"}`}>{lead.status}</span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">{lead.contact}</div>
                 {lead.comment && <div className="text-sm text-muted-foreground mt-1 italic">{lead.comment}</div>}
                 <div className="text-xs text-muted-foreground mt-2">{new Date(lead.createdAt).toLocaleString("ru")}</div>
               </div>
-              <div className="flex flex-col gap-2 shrink-0">
+              <div className="flex flex-row sm:flex-col gap-2 shrink-0">
                 <select
                   value={lead.status}
                   onChange={(e) => updateLead.mutate({ id: lead.id, data: { status: e.target.value } })}
-                  className="border rounded px-2 py-1 text-sm bg-card"
+                  className="border rounded-lg px-2 py-1.5 text-sm bg-card flex-1 sm:flex-none"
                 >
                   {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {lead.status === "зарегистрирован" && !lead.convertedPartnerId && (
                   <button
                     onClick={() => setConvertId(lead.id)}
-                    className="bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 transition"
+                    className="bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 transition whitespace-nowrap"
                   >
                     👥 В партнёры
                   </button>

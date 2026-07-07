@@ -72,4 +72,5 @@
 @layer base {
   * { @apply border-border; }
   body { @apply font-sans antialiased bg-background text-foreground; }
+  html { -webkit-text-size-adjust: 100%; }
 }

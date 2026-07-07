@@ -25,17 +25,17 @@ export default function Dashboard() {
         <p className="text-muted-foreground text-sm mt-1">Статистика Greenleaf Bot</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Всего пользователей" value={data.totalUsers} />
-        <StatCard title="Завершили сценарий" value={data.completedScenario} sub={`${data.totalUsers ? Math.round((data.completedScenario / data.totalUsers) * 100) : 0}% от всех`} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <StatCard title="Пользователей" value={data.totalUsers} />
+        <StatCard title="Завершили" value={data.completedScenario} sub={`${data.totalUsers ? Math.round((data.completedScenario / data.totalUsers) * 100) : 0}%`} />
         <StatCard title="Заявок" value={data.totalLeads} color="text-primary" />
-        <StatCard title="Зарегистрированы" value={data.registeredLeads} color="text-primary" />
+        <StatCard title="Зарег-но" value={data.registeredLeads} color="text-primary" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         <StatCard title="Партнёров" value={data.totalPartners} />
-        <StatCard title="Конверсия → заявка" value={`${data.conversionToLead}%`} color="text-primary" />
-        <StatCard title="Конверсия → партнёр" value={`${data.conversionToPartner}%`} color="text-primary" />
+        <StatCard title="Конверсия" value={`${data.conversionToLead}%`} color="text-primary" />
+        <StatCard title="В партнёры" value={`${data.conversionToPartner}%`} color="text-primary" />
       </div>
 
       <div className="bg-card rounded-xl border p-5">
