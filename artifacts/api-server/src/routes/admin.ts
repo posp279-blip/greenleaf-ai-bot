@@ -209,9 +209,12 @@ router.patch("/partners/:id", async (req, res) => {
 
 router.delete("/partners/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  // Remove partnerId from associated sessions and leads to avoid FK issues
+  // Remove partnerId and convertedPartnerId from associated leads
+  await db.update(leadsTable).set({ partnerId: null, convertedPartnerId: null, updatedAt: new Date() }).where(eq(leadsTable.partnerId, id));
+  await db.update(leadsTable).set({ convertedPartnerId: null, updatedAt: new Date() }).where(eq(leadsTable.convertedPartnerId, id));
+  // Remove partnerId from sessions
   await db.update(userSessionsTable).set({ partnerId: null, updatedAt: new Date() }).where(eq(userSessionsTable.partnerId, id));
-  await db.update(leadsTable).set({ partnerId: null, updatedAt: new Date() }).where(eq(leadsTable.partnerId, id));
+  // Break referral links
   await db.update(partnersTable).set({ sponsorPartnerId: null, updatedAt: new Date() }).where(eq(partnersTable.sponsorPartnerId, id));
   await db.delete(partnersTable).where(eq(partnersTable.id, id));
   res.json({ success: true });

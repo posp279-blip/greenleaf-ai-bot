@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useGetPartners, useCreatePartner, useUpdatePartner, useDeletePartner, getGetPartnersQueryKey } from "@workspace/api-client-react";
+import { useGetPartners, useCreatePartner, useUpdatePartner, useDeletePartner, getGetPartnersQueryKey, getGetStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function PartnersPage() {
@@ -7,7 +7,10 @@ export default function PartnersPage() {
   const { data: partners = [], isLoading } = useGetPartners();
   const createPartner = useCreatePartner({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }); setShowCreate(false); setForm({ name: "", refCode: "", telegram: "", phone: "" }); } } });
   const updatePartner = useUpdatePartner({ mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }) } });
-  const deletePartner = useDeletePartner({ mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() }) } });
+  const deletePartner = useDeletePartner({ mutation: { onSuccess: () => {
+    qc.invalidateQueries({ queryKey: getGetPartnersQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetStatsQueryKey() });
+  } } });
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", refCode: "", telegram: "", phone: "" });
