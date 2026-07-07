@@ -29,4 +29,13 @@ app.listen(port, async (err?: Error) => {
 
   logger.info({ port, webhookUrl }, "Server listening");
   await startBot(webhookUrl);
+
+  // Keep-alive ping to prevent Replit autoscale sleep
+  const keepAliveUrl = `http://localhost:${port}/api/healthz`;
+  setInterval(() => {
+    fetch(keepAliveUrl).catch(() => {
+      // Ignore errors — if server is down, it'll restart anyway
+    });
+  }, 45_000);
+  logger.info({ url: keepAliveUrl, intervalSec: 45 }, "Keep-alive ping started");
 });
