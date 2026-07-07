@@ -82,6 +82,14 @@ router.post("/leads/:id/convert-to-partner", async (req, res) => {
     sourceLeadId: lead.id,
     isActive: true,
   }).returning();
+
+  // Update all user sessions for this person so they see partner menu immediately
+  if (session?.telegramUserId) {
+    await db.update(userSessionsTable)
+      .set({ partnerId: partner.id, updatedAt: new Date() })
+      .where(eq(userSessionsTable.telegramUserId, session.telegramUserId));
+  }
+
   await db.update(leadsTable).set({ convertedPartnerId: partner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, id));
   res.json(partner);
 });

@@ -41,10 +41,23 @@ async function isAdmin(userId: number): Promise<boolean> {
 }
 
 async function getActivePartner(userId: number) {
+  // Direct lookup by telegramUserId
   const rows = await db.select().from(partnersTable).where(
     and(eq(partnersTable.telegramUserId, userId), eq(partnersTable.isActive, true))
   );
-  return rows[0] || null;
+  if (rows[0]) return rows[0];
+
+  // Fallback: check session partnerId (for users who became partners via web/TG admin)
+  const sessions = await db.select().from(userSessionsTable).where(
+    and(eq(userSessionsTable.telegramUserId, userId), eq(userSessionsTable.isCompleted, true))
+  );
+  if (sessions[0]?.partnerId) {
+    const p = await db.select().from(partnersTable).where(
+      and(eq(partnersTable.id, sessions[0].partnerId), eq(partnersTable.isActive, true))
+    );
+    if (p[0]) return p[0];
+  }
+  return null;
 }
 
 async function getOrCreateSession(
@@ -1155,6 +1168,14 @@ async function handleAdminInput(bot: TelegramBot, chatId: number, userId: number
       refCode: text, telegramUserId: sessionRow?.telegramUserId || null,
       sponsorPartnerId: sessionRow?.partnerId || null, sourceLeadId: lead.id, isActive: true,
     }).returning();
+
+    // Update all user sessions so they see partner menu immediately
+    if (sessionRow?.telegramUserId) {
+      await db.update(userSessionsTable)
+        .set({ partnerId: newPartner.id, updatedAt: new Date() })
+        .where(eq(userSessionsTable.telegramUserId, sessionRow.telegramUserId));
+    }
+
     await db.update(leadsTable).set({ convertedPartnerId: newPartner.id, updatedAt: new Date() }).where(eq(leadsTable.id, leadId));
     await db.update(adminStateTable).set({ mode: "idle", pendingAction: null, payload: null, updatedAt: new Date() }).where(eq(adminStateTable.telegramUserId, userId));
     const botUsername = await getSetting("bot_username");
