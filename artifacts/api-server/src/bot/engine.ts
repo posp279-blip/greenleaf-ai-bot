@@ -95,7 +95,9 @@ async function getOrCreateSession(
     await db.update(userSessionsTable)
       .set({ username: username || existing[0].username, firstName: firstName || existing[0].firstName, updatedAt: new Date() })
       .where(eq(userSessionsTable.id, existing[0].id));
-    return existing[0];
+    // Re-read to get the latest partnerId/refCode if they were updated externally
+    const fresh = await db.select().from(userSessionsTable).where(eq(userSessionsTable.id, existing[0].id));
+    return fresh[0] || existing[0];
   }
 
   let partnerId: number | null = null;
@@ -305,6 +307,9 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const partners = await db.select().from(partnersTable).where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)));
       if (partners[0]) partnerId = partners[0].id;
       await db.update(userSessionsTable).set({ refCode, partnerId, updatedAt: new Date() }).where(eq(userSessionsTable.id, existing[0].id));
+      // Update the in-memory object so the rest of the flow sees the partnerId
+      existing[0].refCode = refCode;
+      existing[0].partnerId = partnerId;
     }
     const session = await getOrCreateSession(userId, username, firstName, lastName, refCode);
     await handleIntro(bot, chatId, session);
