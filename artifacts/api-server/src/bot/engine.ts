@@ -519,9 +519,13 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   if (!chatId) return;
 
   const data = query.data || "";
-  // Only answer real callback queries (skip fake ones from reply keyboard)
+  // Answer real callback queries (skip fake ones from reply keyboard)
   if (!query.id.startsWith("reply_")) {
-    await bot.answerCallbackQuery(query.id);
+    try {
+      await bot.answerCallbackQuery(query.id);
+    } catch {
+      // Query expired or already answered — safe to ignore
+    }
   }
 
   const session = await getOrCreateSession(userId, query.from.username, query.from.first_name, query.from.last_name);
