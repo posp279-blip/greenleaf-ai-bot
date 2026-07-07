@@ -20,6 +20,7 @@ export * from './deletePartner200';
 export * from './getLeadsParams';
 export * from './getSessionsParams';
 export * from './getSettings200';
+export * from './getStatsParams';
 export * from './healthStatus';
 export * from './lead';
 export * from './leadStatusUpdate';

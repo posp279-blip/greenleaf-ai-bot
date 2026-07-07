@@ -224,6 +224,13 @@ export interface AiLog {
   createdAt: string;
 }
 
+export type GetStatsParams = {
+/**
+ * Filter stats to a specific partner's downline (all recursive referrals)
+ */
+adminPartnerId?: number;
+};
+
 export type GetSessionsParams = {
 limit?: number;
 offset?: number;

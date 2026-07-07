@@ -1,4 +1,5 @@
-import { useGetStats } from "@workspace/api-client-react";
+import { useState } from "react";
+import { useGetStats, useGetPartners } from "@workspace/api-client-react";
 
 function StatCard({ title, value, sub, color }: { title: string; value: number | string; sub?: string; color?: string }) {
   return (
@@ -11,7 +12,11 @@ function StatCard({ title, value, sub, color }: { title: string; value: number |
 }
 
 export default function Dashboard() {
-  const { data, isLoading } = useGetStats();
+  const [adminPartnerId, setAdminPartnerId] = useState<number | undefined>(undefined);
+  const { data: allPartners = [] } = useGetPartners();
+  // Find admin partners (partners with no sponsor = top level)
+  const adminPartners = allPartners.filter((p) => !p.sponsorPartnerId);
+  const { data, isLoading } = useGetStats({ adminPartnerId });
 
   if (isLoading) return <div className="text-muted-foreground p-8 text-center">Загрузка...</div>;
   if (!data) return <div className="text-destructive p-8 text-center">Нет данных</div>;
@@ -20,9 +25,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Дашборд</h1>
-        <p className="text-muted-foreground text-sm mt-1">Статистика Greenleaf Bot</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Дашборд</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {adminPartnerId ? "Статистика по твоей ветке" : "Общая статистика Greenleaf Bot"}
+          </p>
+        </div>
+        {adminPartners.length > 0 && (
+          <select
+            value={adminPartnerId ?? ""}
+            onChange={(e) => setAdminPartnerId(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+            className="border rounded-lg px-3 py-2 text-sm bg-card w-full sm:w-auto"
+          >
+            <option value="">Общая статистика</option>
+            {adminPartners.map((p) => (
+              <option key={p.id} value={p.id}>Моя ветка: {p.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">

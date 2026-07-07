@@ -44,6 +44,13 @@ paths:
       operationId: getStats
       tags: [stats]
       summary: Get dashboard statistics
+      parameters:
+        - name: adminPartnerId
+          in: query
+          schema:
+            type: integer
+          required: false
+          description: Filter stats to a specific partner's downline (all recursive referrals)
       responses:
         "200":
           description: Stats

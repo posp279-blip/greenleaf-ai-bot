@@ -12,15 +12,50 @@ import { getBot } from "../bot/index.js";
 const router = Router();
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
-router.get("/stats", async (_req, res) => {
-  const sessions = await db.select().from(userSessionsTable);
-  const leads = await db.select().from(leadsTable);
-  const partners = await db.select().from(partnersTable);
-  const registered = leads.filter((l) => l.status === "зарегистрирован").length;
-  const completed = sessions.filter((s) => s.isCompleted).length;
+router.get("/stats", async (req, res) => {
+  const adminPartnerId = (req.query.adminPartnerId as string) ? parseInt(req.query.adminPartnerId as string, 10) : undefined;
+
+  const allSessions = await db.select().from(userSessionsTable);
+  const allLeads = await db.select().from(leadsTable);
+  const allPartners = await db.select().from(partnersTable);
+
+  let mySessions = allSessions;
+  let myLeads = allLeads;
+  let myPartners = allPartners;
+
+  if (adminPartnerId) {
+    const downlineIds = new Set<number>([adminPartnerId]);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const p of allPartners) {
+        if (p.sponsorPartnerId != null && downlineIds.has(p.sponsorPartnerId) && !downlineIds.has(p.id)) {
+          downlineIds.add(p.id);
+          added = true;
+        }
+      }
+    }
+    const idList = Array.from(downlineIds);
+    mySessions = allSessions.filter((s) => s.partnerId != null && idList.includes(s.partnerId));
+    myLeads = allLeads.filter((l) => l.partnerId != null && idList.includes(l.partnerId));
+    myPartners = allPartners.filter((p) => idList.includes(p.id));
+  }
+
+  const registered = myLeads.filter((l) => l.status === "зарегистрирован").length;
+  const completed = mySessions.filter((s) => s.isCompleted).length;
   const stageCounts: Record<string, number> = {};
-  for (const s of sessions) stageCounts[s.currentStage] = (stageCounts[s.currentStage] || 0) + 1;
-  res.json({ totalUsers: sessions.length, completedScenario: completed, totalLeads: leads.length, registeredLeads: registered, totalPartners: partners.length, conversionToLead: sessions.length ? Math.round((leads.length / sessions.length) * 100) : 0, conversionToPartner: leads.length ? Math.round((registered / leads.length) * 100) : 0, stageCounts });
+  for (const s of mySessions) stageCounts[s.currentStage] = (stageCounts[s.currentStage] || 0) + 1;
+
+  res.json({
+    totalUsers: mySessions.length,
+    completedScenario: completed,
+    totalLeads: myLeads.length,
+    registeredLeads: registered,
+    totalPartners: myPartners.length,
+    conversionToLead: mySessions.length ? Math.round((myLeads.length / mySessions.length) * 100) : 0,
+    conversionToPartner: myLeads.length ? Math.round((registered / myLeads.length) * 100) : 0,
+    stageCounts,
+  });
 });
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────

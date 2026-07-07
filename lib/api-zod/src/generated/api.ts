@@ -19,6 +19,10 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Get dashboard statistics
  */
+export const GetStatsQueryParams = zod.object({
+  "adminPartnerId": zod.coerce.number().optional().describe('Filter stats to a specific partner\'s downline (all recursive referrals)')
+})
+
 export const GetStatsResponse = zod.object({
   "totalUsers": zod.number(),
   "completedScenario": zod.number(),

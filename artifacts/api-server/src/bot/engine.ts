@@ -507,28 +507,13 @@ async function handleLeadInput(bot: TelegramBot, chatId: number, userId: number,
     });
     await saveMessage(session.id, "bot", TEXTS.leadDone, "completed");
 
-    let partnerInfo = "не указан";
+    // Notify the sponsor partner (or admins for organic leads)
     if (session.partnerId) {
-      const pRows = await db.select().from(partnersTable).where(eq(partnersTable.id, session.partnerId));
-      if (pRows[0]) partnerInfo = `${pRows[0].name} (${pRows[0].refCode})`;
-    }
-    const notifText = `🆕 Новая заявка\!
-
-Имя: ${escapeMarkdown(leadName)}
-Контакт: ${escapeMarkdown(leadContact)}
-Комментарий: ${leadComment ? escapeMarkdown(leadComment) : "—"}
-Партнёр: ${escapeMarkdown(partnerInfo)}
-Дата: ${escapeMarkdown(new Date().toLocaleString("ru"))}`;
-    await notifyAdmins(bot, notifText);
-
-    // Also notify the partner who referred this lead
-    if (session.partnerId) {
-      await notifyPartner(bot, session.partnerId, `🆕 Новая заявка по твоей ссылке\!
-
-Имя: ${escapeMarkdown(leadName)}
-Контакт: ${escapeMarkdown(leadContact)}
-Статус: новая
-Дата: ${escapeMarkdown(new Date().toLocaleString("ru"))}`);
+      await notifyPartner(bot, session.partnerId, `🆕 Новая заявка по твоей ссылке\!\n\nИмя: ${escapeMarkdown(leadName)}\nКонтакт: ${escapeMarkdown(leadContact)}\nСтатус: новая\nДата: ${escapeMarkdown(new Date().toLocaleString("ru"))}`);
+    } else {
+      // Organic lead — notify admins only
+      const notifText = `🆕 Новая заявка (органика)\n\nИмя: ${escapeMarkdown(leadName)}\nКонтакт: ${escapeMarkdown(leadContact)}\nКомментарий: ${leadComment ? escapeMarkdown(leadComment) : "—"}\nДата: ${escapeMarkdown(new Date().toLocaleString("ru"))}`;
+      await notifyAdmins(bot, notifText);
     }
   }
 }

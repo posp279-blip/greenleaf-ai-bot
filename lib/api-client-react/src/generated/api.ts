@@ -32,6 +32,7 @@ import type {
   GetLeadsParams,
   GetSessionsParams,
   GetSettings200,
+  GetStatsParams,
   HealthStatus,
   Lead,
   LeadStatusUpdate,
@@ -151,20 +152,27 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getGetStatsUrl = () => {
+export const getGetStatsUrl = (params?: GetStatsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/admin/stats`
+  return stringifiedParams.length > 0 ? `/api/admin/stats?${stringifiedParams}` : `/api/admin/stats`
 }
 
 /**
  * @summary Get dashboard statistics
  */
-export const getStats = async ( options?: RequestInit): Promise<Stats> => {
+export const getStats = async (params?: GetStatsParams, options?: RequestInit): Promise<Stats> => {
 
-  return customFetch<Stats>(getGetStatsUrl(),
+  return customFetch<Stats>(getGetStatsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -177,23 +185,23 @@ export const getStats = async ( options?: RequestInit): Promise<Stats> => {
 
 
 
-export const getGetStatsQueryKey = () => {
+export const getGetStatsQueryKey = (params?: GetStatsParams,) => {
     return [
-    `/api/admin/stats`
+    `/api/admin/stats`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetStatsQueryOptions = <TData = Awaited<ReturnType<typeof getStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetStatsQueryOptions = <TData = Awaited<ReturnType<typeof getStats>>, TError = ErrorType<unknown>>(params?: GetStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetStatsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetStatsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStats>>> = ({ signal }) => getStats({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStats>>> = ({ signal }) => getStats(params, { signal, ...requestOptions });
 
 
 
@@ -211,11 +219,11 @@ export type GetStatsQueryError = ErrorType<unknown>
  */
 
 export function useGetStats<TData = Awaited<ReturnType<typeof getStats>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetStatsQueryOptions(options)
+  const queryOptions = getGetStatsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
