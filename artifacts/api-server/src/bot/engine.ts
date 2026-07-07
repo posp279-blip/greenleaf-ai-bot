@@ -31,8 +31,10 @@ async function getSetting(key: string): Promise<string> {
 
 async function getAdminIds(): Promise<number[]> {
   const raw = await getSetting("admin_telegram_ids");
-  if (!raw) return [];
-  return raw.split(",").map((s) => parseInt(s.trim(), 10)).filter(Boolean);
+  const envRaw = process.env.ADMIN_TELEGRAM_IDS;
+  const combined = [raw, envRaw].filter(Boolean).join(",");
+  if (!combined) return [];
+  return combined.split(",").map((s) => parseInt(s.trim(), 10)).filter(Boolean);
 }
 
 async function isAdmin(userId: number): Promise<boolean> {
@@ -41,13 +43,10 @@ async function isAdmin(userId: number): Promise<boolean> {
 }
 
 async function getActivePartner(userId: number) {
-  // Direct lookup by telegramUserId
   const rows = await db.select().from(partnersTable).where(
     and(eq(partnersTable.telegramUserId, userId), eq(partnersTable.isActive, true))
   );
   if (rows[0]) return rows[0];
-
-  // Fallback: check session partnerId (for users who became partners via web/TG admin)
   const sessions = await db.select().from(userSessionsTable).where(
     eq(userSessionsTable.telegramUserId, userId)
   );
@@ -58,6 +57,57 @@ async function getActivePartner(userId: number) {
     if (p[0]) return p[0];
   }
   return null;
+}
+
+// Reply Keyboard — persistent bottom menu
+function getReplyKeyboard(isAdmin: boolean, isPartner: boolean, isCompleted: boolean) {
+  const k: { text: string }[][] = [];
+  if (isAdmin) {
+    k.push([{ text: "▶️ Продолжить" }, { text: "⚙️ Админ-панель" }]);
+  } else if (isPartner) {
+    k.push([{ text: "🔗 Моя ссылка" }, { text: "📋 Мои заявки" }]);
+    k.push([{ text: "📊 Статистика" }, { text: "📤 Как отправить" }]);
+  } else {
+    if (isCompleted) {
+      k.push([{ text: "📊 Калькулятор" }]);
+    } else {
+      k.push([{ text: "▶️ Продолжить разбор" }]);
+    }
+    k.push([{ text: "📋 Моя заявка" }, { text: "❓ Задать вопрос" }]);
+    k.push([{ text: "📞 Связаться" }]);
+  }
+  k.push([{ text: "🏠 Меню" }]);
+  return { keyboard: k, resize_keyboard: true };
+}
+
+async function sendKeyboardOnce(bot: TelegramBot, chatId: number, isAdmin: boolean, isPartner: boolean, isCompleted: boolean) {
+  await bot.sendMessage(chatId, "\u200b", { reply_markup: getReplyKeyboard(isAdmin, isPartner, isCompleted) });
+}
+
+// Text buttons map to callback actions
+const REPLY_ACTIONS: Record<string, string> = {
+  "🏠 Меню": "menu_main",
+  "▶️ Продолжить": "menu_continue",
+  "▶️ Продолжить разбор": "menu_continue",
+  "📊 Калькулятор": "menu_calc",
+  "📋 Моя заявка": "menu_my_lead",
+  "❓ Задать вопрос": "menu_question",
+  "📞 Связаться": "menu_contact",
+  "🔗 Моя ссылка": "partner_link",
+  "📋 Мои заявки": "partner_leads",
+  "📊 Статистика": "partner_stats",
+  "📤 Как отправить": "partner_how",
+  "⚙️ Админ-панель": "admin_menu",
+};
+
+async function notifyPartner(bot: TelegramBot, partnerId: number, text: string) {
+  const p = await db.select().from(partnersTable).where(eq(partnersTable.id, partnerId));
+  if (!p[0]?.telegramUserId) return;
+  try {
+    await bot.sendMessage(p[0].telegramUserId, text, { parse_mode: "Markdown" });
+  } catch (err) {
+    logger.error({ err, partnerId }, "Partner notify failed");
+  }
 }
 
 async function getOrCreateSession(
@@ -259,19 +309,34 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
   const firstName = msg.from?.first_name;
   const lastName = msg.from?.last_name;
 
+  // Reply keyboard buttons handling
+  const replyAction = REPLY_ACTIONS[text];
+  if (replyAction) {
+    const fakeQuery: CallbackQuery = {
+      id: "reply_" + Date.now(),
+      from: msg.from!,
+      message: msg,
+      chat_instance: String(msg.chat.id),
+      data: replyAction,
+    };
+    await handleCallback(bot, fakeQuery);
+    return;
+  }
+
   if (text.startsWith("/start")) {
     const parts = text.split(" ");
     const refCode = parts[1] || undefined;
-    // Reset or create session
     const existing = await db.select().from(userSessionsTable).where(eq(userSessionsTable.telegramUserId, userId));
     if (existing[0] && refCode && !existing[0].refCode) {
-      // Apply refCode retroactively if user came via link but had existing session
       let partnerId: number | null = null;
       const partners = await db.select().from(partnersTable).where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)));
       if (partners[0]) partnerId = partners[0].id;
       await db.update(userSessionsTable).set({ refCode, partnerId, updatedAt: new Date() }).where(eq(userSessionsTable.id, existing[0].id));
     }
     const session = await getOrCreateSession(userId, username, firstName, lastName, refCode);
+    const adminFlag = await isAdmin(userId);
+    const partner = await getActivePartner(userId);
+    await sendKeyboardOnce(bot, chatId, adminFlag, !!partner, session.isCompleted);
     await handleIntro(bot, chatId, session);
     return;
   }
@@ -467,6 +532,16 @@ async function handleLeadInput(bot: TelegramBot, chatId: number, userId: number,
     }
     const notifText = `🆕 *Новая заявка!*\n\nИмя: ${leadName}\nКонтакт: ${leadContact}\nКомментарий: ${leadComment || "—"}\nПартнёр: ${partnerInfo}\nДата: ${new Date().toLocaleString("ru")}`;
     await notifyAdmins(bot, notifText);
+
+    // Also notify the partner who referred this lead
+    if (session.partnerId) {
+      await notifyPartner(bot, session.partnerId, `🆕 *Новая заявка по твоей ссылке!*
+
+Имя: ${leadName}
+Контакт: ${leadContact}
+Статус: новая
+Дата: ${new Date().toLocaleString("ru")}`);
+    }
   }
 }
 

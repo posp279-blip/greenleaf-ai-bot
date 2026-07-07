@@ -112,7 +112,6 @@ export default function PartnersPage() {
                   const tid = editForm.telegramUserId.trim() ? parseInt(editForm.telegramUserId.trim(), 10) : null;
                   updatePartner.mutate({ id: editingPartner.id, data: {
                     name: editForm.name,
-                    refCode: editForm.refCode,
                     telegram: editForm.telegram || undefined,
                     phone: editForm.phone || undefined,
                     telegramUserId: tid && !isNaN(tid) ? tid : null,

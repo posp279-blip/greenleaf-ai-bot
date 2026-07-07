@@ -4,7 +4,7 @@ import { useGetSessions, useGetSessionMessages } from "@workspace/api-client-rea
 export default function SessionsPage() {
   const { data: sessions = [], isLoading } = useGetSessions({ limit: 50 });
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const { data: messages = [] } = useGetSessionMessages(selectedId!, { query: { enabled: !!selectedId } });
+  const { data: messages = [] } = useGetSessionMessages(selectedId!, { query: { enabled: !!selectedId, queryKey: ["sessionMessages", selectedId] } });
 
   return (
     <div className="space-y-6">

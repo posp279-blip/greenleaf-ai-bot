@@ -37,7 +37,7 @@ export default function AiPage() {
             </div>
           </div>
           <button
-            onClick={() => testAi.mutate({})}
+            onClick={() => testAi.mutate()}
             disabled={testAi.isPending}
             className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
           >
