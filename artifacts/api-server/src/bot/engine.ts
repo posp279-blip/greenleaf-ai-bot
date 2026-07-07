@@ -59,45 +59,18 @@ async function getActivePartner(userId: number) {
   return null;
 }
 
-// Reply Keyboard — persistent bottom menu
-function getReplyKeyboard(isAdmin: boolean, isPartner: boolean, isCompleted: boolean) {
-  const k: { text: string }[][] = [];
-  if (isAdmin) {
-    k.push([{ text: "▶️ Продолжить" }, { text: "⚙️ Админ-панель" }]);
-  } else if (isPartner) {
-    k.push([{ text: "🔗 Моя ссылка" }, { text: "📋 Мои заявки" }]);
-    k.push([{ text: "📊 Статистика" }, { text: "📤 Как отправить" }]);
-  } else {
-    if (isCompleted) {
-      k.push([{ text: "📊 Калькулятор" }]);
-    } else {
-      k.push([{ text: "▶️ Продолжить разбор" }]);
-    }
-    k.push([{ text: "📋 Моя заявка" }, { text: "❓ Задать вопрос" }]);
-    k.push([{ text: "📞 Связаться" }]);
-  }
-  k.push([{ text: "🏠 Меню" }]);
-  return { keyboard: k, resize_keyboard: true };
+// Reply Keyboard — only "Menu" button, opens inline menu on tap
+function getReplyKeyboard() {
+  return { keyboard: [[{ text: "🏠 Меню" }]], resize_keyboard: true };
 }
 
-async function sendKeyboardOnce(bot: TelegramBot, chatId: number, isAdmin: boolean, isPartner: boolean, isCompleted: boolean) {
-  await bot.sendMessage(chatId, "\u231b Используйте кнопки внизу для быстрого доступа", { reply_markup: getReplyKeyboard(isAdmin, isPartner, isCompleted) });
+async function sendKeyboardOnce(bot: TelegramBot, chatId: number) {
+  await bot.sendMessage(chatId, "\u23ee \u041dажми «Меню» внизу для доступа к функциям бота", { reply_markup: getReplyKeyboard() });
 }
 
-// Text buttons map to callback actions
+// Reply keyboard text → callback action
 const REPLY_ACTIONS: Record<string, string> = {
   "🏠 Меню": "menu_main",
-  "▶️ Продолжить": "menu_continue",
-  "▶️ Продолжить разбор": "menu_continue",
-  "📊 Калькулятор": "menu_calc",
-  "📋 Моя заявка": "menu_my_lead",
-  "❓ Задать вопрос": "menu_question",
-  "📞 Связаться": "menu_contact",
-  "🔗 Моя ссылка": "partner_link",
-  "📋 Мои заявки": "partner_leads",
-  "📊 Статистика": "partner_stats",
-  "📤 Как отправить": "partner_how",
-  "⚙️ Админ-панель": "admin_menu",
 };
 
 async function notifyPartner(bot: TelegramBot, partnerId: number, text: string) {
@@ -334,9 +307,7 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       await db.update(userSessionsTable).set({ refCode, partnerId, updatedAt: new Date() }).where(eq(userSessionsTable.id, existing[0].id));
     }
     const session = await getOrCreateSession(userId, username, firstName, lastName, refCode);
-    const adminFlag = await isAdmin(userId);
-    const partner = await getActivePartner(userId);
-    await sendKeyboardOnce(bot, chatId, adminFlag, !!partner, session.isCompleted);
+    await sendKeyboardOnce(bot, chatId);
     await handleIntro(bot, chatId, session);
     return;
   }
@@ -553,7 +524,10 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   if (!chatId) return;
 
   const data = query.data || "";
-  await bot.answerCallbackQuery(query.id);
+  // Only answer real callback queries (skip fake ones from reply keyboard)
+  if (!query.id.startsWith("reply_")) {
+    await bot.answerCallbackQuery(query.id);
+  }
 
   const session = await getOrCreateSession(userId, query.from.username, query.from.first_name, query.from.last_name);
   const adminFlag = await isAdmin(userId);
@@ -567,6 +541,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "restart_confirm") {
     await db.update(userSessionsTable).set({ currentStage: "intro", menuShown: false, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
+    await sendKeyboardOnce(bot, chatId);
     await handleIntro(bot, chatId, { ...session, currentStage: "intro" });
     return;
   }
