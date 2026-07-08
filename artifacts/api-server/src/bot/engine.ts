@@ -396,9 +396,11 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       await saveMessage(session.id, "user", text, stage);
       const name = text.trim().split(/\s+/)[0];
       await db.update(userSessionsTable).set({ firstName: name, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-      const greeting = name ? `Приятно, ${name}. Тогда пойдём спокойно и без занудства.` : `Приятно. Пойдём спокойно.`;
+      const greeting = name
+        ? `Приятно, ${name}. Тогда пойдём спокойно и без занудства.`
+        : `Приятно. Пойдём спокойно.`;
       await bot.sendMessage(chatId, greeting, { parse_mode: "Markdown" });
-      await handleDepthChoice(bot, chatId, { ...session, firstName: name });
+      await handleLaundryQuestion(bot, chatId, { ...session, firstName: name });
       break;
     }
     case "laundry_question": {
@@ -415,13 +417,12 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       break;
     }
     case "laundry_reaction": {
-      // User replied to laundry reaction — offer composition or continue
       const quick = classifyText(text);
       if (quick === "affirmative" || quick === "other") {
         await updateStage(session.id, "laundry_short_or_details");
         await bot.sendMessage(chatId, TEXTS.laundryShortComposition, {
           parse_mode: "Markdown",
-          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "laundry_short" }, { text: "Подробнее", callback_data: "laundry_detailed" }], [{ text: "К видео", callback_data: "laundry_video" }]] }
+          reply_markup: { inline_keyboard: [[{ text: "Показать, как это выглядит на примере Greenleaf", callback_data: "laundry_greenleaf" }]] }
         });
       } else {
         await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
@@ -431,11 +432,10 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       break;
     }
     case "laundry_short_or_details": {
-      // User text during laundry composition stage — treat as shortcut
       const quick = classifyText(text);
       if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
-        await updateStage(session.id, "laundry_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.laundryShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "laundry_video" }], [{ text: "К расчёту", callback_data: "laundry_calc" }]] } });
+        await updateStage(session.id, "laundry_greenleaf");
+        await bot.sendMessage(chatId, TEXTS.laundryGreenleaf, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К расчёту", callback_data: "laundry_calc" }]] } });
       } else {
         await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
           reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
