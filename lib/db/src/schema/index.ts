@@ -45,7 +45,6 @@ export const userSessionsTable = pgTable("user_sessions", {
   partnerId: integer("partner_id"),
   currentStage: text("current_stage").notNull().default("intro"),
   depthMode: text("depth_mode"),
-  displayName: text("display_name"),
   familyAdults: integer("family_adults"),
   familyChildren: integer("family_children"),
   femaleHygieneRelevant: boolean("female_hygiene_relevant"),
