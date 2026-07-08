@@ -63,7 +63,7 @@ export async function buildMessageHistory(sessionId: number, limit: number = 8):
 }
 
 export async function generateStageReply(
-  userText: string,
+  userText: string | null,
   stage: string,
   stagePrompt: string,
   knownFacts: KnownFacts,
@@ -98,7 +98,9 @@ export async function generateStageReply(
     messages.push({ role: h.role, content: h.content });
   }
 
-  messages.push({ role: "user", content: userText });
+  if (userText) {
+    messages.push({ role: "user", content: userText });
+  }
 
   try {
     const resp = await c.chat.completions.create({
@@ -112,7 +114,7 @@ export async function generateStageReply(
       await db.insert(aiLogsTable).values({
         sessionId,
         promptType: "stage_reply",
-        input: userText,
+        input: userText ?? "(init)",
         output,
         success: true,
       });
@@ -124,7 +126,7 @@ export async function generateStageReply(
       await db.insert(aiLogsTable).values({
         sessionId,
         promptType: "stage_reply",
-        input: userText,
+        input: userText ?? "(init)",
         output: null,
         success: false,
         error: String(err),

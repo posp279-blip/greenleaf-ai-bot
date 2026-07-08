@@ -228,11 +228,19 @@ async function handleIntro(bot: TelegramBot, chatId: number, session: BotSession
   await saveMessage(session.id, "bot", TEXTS.intro, "intro");
 }
 
+const ASK_NAME_FALLBACK = `Привет! Я — твой помощник по Greenleaf.
+
+Давай по-человечески — как к тебе обращаться? Напиши имя или как удобно.
+
+Сейчас пройдём пару простых тем: чем стираем, моем посуду, женская гигиена и туалетная бумага. Без давления — просто посмотрим, чем пользуется дома, и сравним.
+
+Пиши простым сообщением — никаких кнопок нажимать не нужно.`;
+
 async function handleAskName(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "ask_name");
-  const reply = await generateStageReply("Привет", "ask_name", ASK_NAME_PROMPT, { currentStage: "ask_name" }, session.id);
-  await bot.sendMessage(chatId, reply || TEXTS.depthChoice, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
-  await saveMessage(session.id, "bot", reply || TEXTS.depthChoice, "ask_name");
+  const reply = await generateStageReply(null, "ask_name", ASK_NAME_PROMPT, { currentStage: "ask_name" }, session.id);
+  await bot.sendMessage(chatId, reply || ASK_NAME_FALLBACK, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
+  await saveMessage(session.id, "bot", reply || ASK_NAME_FALLBACK, "ask_name");
 }
 
 async function handleDepthChoice(bot: TelegramBot, chatId: number, session: BotSession) {
@@ -243,49 +251,49 @@ async function handleDepthChoice(bot: TelegramBot, chatId: number, session: BotS
 
 async function handleLaundryQuestion(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "laundry_question");
-  const reply = await generateStageReply("Начнём", "laundry_question", LAUNDRY_PROMPT, { displayName: session.displayName, currentStage: "laundry_question" }, session.id);
+  const reply = await generateStageReply(null, "laundry_question", LAUNDRY_PROMPT, { displayName: session.displayName, currentStage: "laundry_question" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.laundryQuestion, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.laundryQuestion, "laundry_question");
 }
 
 async function handleDishQuestion(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "dish_question");
-  const reply = await generateStageReply("Переходим", "dish_question", DISH_PROMPT, { displayName: session.displayName, currentStage: "dish_question" }, session.id);
+  const reply = await generateStageReply(null, "dish_question", DISH_PROMPT, { displayName: session.displayName, currentStage: "dish_question" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.dishQuestion, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.dishQuestion, "dish_question");
 }
 
 async function handlePadsIntro(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "pads_intro");
-  const reply = await generateStageReply("Успели обсуждать порошок", "pads_intro", PADS_PROMPT, { displayName: session.displayName, currentStage: "pads_intro" }, session.id);
+  const reply = await generateStageReply(null, "pads_intro", PADS_PROMPT, { displayName: session.displayName, currentStage: "pads_intro" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.padsIntro, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.padsIntro, "pads_intro");
 }
 
 async function handleToiletQuestion(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "toilet_question");
-  const reply = await generateStageReply("Теперь про бумагу", "toilet_question", TOILET_PROMPT, { displayName: session.displayName, currentStage: "toilet_question" }, session.id);
+  const reply = await generateStageReply(null, "toilet_question", TOILET_PROMPT, { displayName: session.displayName, currentStage: "toilet_question" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.toiletQuestion, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.toiletQuestion, "toilet_question");
 }
 
 async function handleFamilyQuestion(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "family_question");
-  const reply = await generateStageReply("А теперь семья", "family_question", FAMILY_PROMPT, { displayName: session.displayName, currentStage: "family_question" }, session.id);
+  const reply = await generateStageReply(null, "family_question", FAMILY_PROMPT, { displayName: session.displayName, currentStage: "family_question" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.familyQuestion, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.familyQuestion, "family_question");
 }
 
 async function handleBigCalculation(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "big_calculation");
-  const reply = await generateStageReply("Расчёт", "big_calculation", CALC_INTRO_PROMPT, { displayName: session.displayName, currentStage: "big_calculation", familyAdults: session.familyAdults || 1 }, session.id);
+  const reply = await generateStageReply(null, "big_calculation", CALC_INTRO_PROMPT, { displayName: session.displayName, currentStage: "big_calculation", familyAdults: session.familyAdults || 1 }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.bigCalculation, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.bigCalculation, "big_calculation");
 }
 
 async function handleFinalQuestion(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "final_question");
-  const reply = await generateStageReply("Финал", "final_question", FINAL_PROMPT, { displayName: session.displayName, currentStage: "final_question" }, session.id);
+  const reply = await generateStageReply(null, "final_question", FINAL_PROMPT, { displayName: session.displayName, currentStage: "final_question" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.finalQuestion, {
     parse_mode: "Markdown",
     reply_markup: {
@@ -300,7 +308,7 @@ async function handleFinalQuestion(bot: TelegramBot, chatId: number, session: Bo
 
 async function handleLeadCapture(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "lead_capture_name");
-  const reply = await generateStageReply("Лид", "lead_capture_name", LEAD_NAME_PROMPT, { displayName: session.displayName, currentStage: "lead_capture_name" }, session.id);
+  const reply = await generateStageReply(null, "lead_capture_name", LEAD_NAME_PROMPT, { displayName: session.displayName, currentStage: "lead_capture_name" }, session.id);
   await bot.sendMessage(chatId, reply || TEXTS.leadCaptureName, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await saveMessage(session.id, "bot", reply || TEXTS.leadCaptureName, "lead_capture_name");
 }
@@ -488,7 +496,7 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       await db.insert(adminStateTable).values({
         telegramUserId: userId, mode: "lead_name_stored", pendingAction: "lead_capture", payload: { name: text } as Record<string, unknown>,
       }).onConflictDoUpdate({ target: adminStateTable.telegramUserId, set: { mode: "lead_name_stored", pendingAction: "lead_capture", payload: { name: text } as Record<string, unknown>, updatedAt: new Date() } });
-      const reply = await generateStageReply("Контакт", "lead_capture_contact", LEAD_CONTACT_PROMPT, { displayName: text.trim(), currentStage: "lead_capture_contact" }, session.id);
+      const reply = await generateStageReply(null, "lead_capture_contact", LEAD_CONTACT_PROMPT, { displayName: text.trim(), currentStage: "lead_capture_contact" }, session.id);
       await bot.sendMessage(chatId, reply || TEXTS.leadCaptureContact, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
       await saveMessage(session.id, "bot", reply || TEXTS.leadCaptureContact, "lead_capture_contact");
       break;
