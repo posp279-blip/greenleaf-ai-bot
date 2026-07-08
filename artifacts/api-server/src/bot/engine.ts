@@ -397,10 +397,11 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const name = text.trim().split(/\s+/)[0];
       await db.update(userSessionsTable).set({ firstName: name, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
       const greeting = name
-        ? `Приятно, ${name}. Тогда пойдём спокойно и без занудства.`
-        : `Приятно. Пойдём спокойно.`;
+        ? `Приятно, ${name}. Тогда пойдём спокойно и без занудства.\n\n${TEXTS.laundryQuestion}`
+        : `Приятно. Пойдём спокойно.\n\n${TEXTS.laundryQuestion}`;
+      await updateStage(session.id, "laundry_question");
       await bot.sendMessage(chatId, greeting, { parse_mode: "Markdown" });
-      await handleLaundryQuestion(bot, chatId, { ...session, firstName: name });
+      await saveMessage(session.id, "bot", greeting, "laundry_question");
       break;
     }
     case "laundry_question": {
@@ -499,7 +500,17 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const numMatch = text.match(/\d+/);
       const count = numMatch ? parseInt(numMatch[0], 10) : 1;
       await db.update(userSessionsTable).set({ familyAdults: count, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-      await handleBigCalculation(bot, chatId, session);
+      await updateStage(session.id, "big_calculation");
+      const msg = `Понял, ${count} человек.\n\n${TEXTS.bigCalculation}`;
+      await bot.sendMessage(chatId, msg, {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📊 Показать таблицу по 13 категориям", callback_data: "show_table" }],
+            [{ text: "Дальше →", callback_data: "calc_conclusion" }],
+          ]
+        }
+      });
       break;
     }
     case "lead_capture_name": {
@@ -877,15 +888,15 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "depth_quick") {
     await db.update(userSessionsTable).set({ depthMode: "quick", updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-    await bot.sendMessage(chatId, "Отлично. По каждой категории — только главное: что стоит проверить, почему важно, и чем отличается Greenleaf.");
-    await handleLaundryQuestion(bot, chatId, session);
+    await updateStage(session.id, "laundry_question");
+    await bot.sendMessage(chatId, `Отлично. По каждой категории — только главное: что стоит проверить, почему важно, и чем отличается Greenleaf.\n\n${TEXTS.laundryQuestion}`, { parse_mode: "Markdown" });
     return;
   }
 
   if (data === "depth_detailed") {
     await db.update(userSessionsTable).set({ depthMode: "detailed", updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-    await bot.sendMessage(chatId, TEXTS.deepIntro, { parse_mode: "Markdown" });
-    await handleLaundryQuestion(bot, chatId, session);
+    await updateStage(session.id, "laundry_question");
+    await bot.sendMessage(chatId, `${TEXTS.deepIntro}\n\n${TEXTS.laundryQuestion}`, { parse_mode: "Markdown" });
     return;
   }
 
@@ -999,8 +1010,11 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
   if (data === "laundry_video") {
     await updateStage(session.id, "laundry_video");
-    await sendVideo(bot, chatId, "laundry_video");
-    await bot.sendMessage(chatId, "Что для тебя было самым неожиданным?", { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "laundry_greenleaf" }]] } });
+    const url = await getVideoUrl("laundry_video");
+    const msg = url
+      ? `🎬 ${url}\n\nЧто для тебя было самым неожиданным?`
+      : `${TEXTS.videoPlaceholder}\n\nЧто для тебя было самым неожиданным?`;
+    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "laundry_greenleaf" }]] } });
     return;
   }
   if (data === "continue_after_video_laundry_video" || data === "laundry_greenleaf") {
@@ -1032,8 +1046,11 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
   if (data === "dish_video") {
     await updateStage(session.id, "dish_video");
-    await sendVideo(bot, chatId, "dish_video");
-    await bot.sendMessage(chatId, "Что заметил?", { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "dish_greenleaf" }]] } });
+    const url = await getVideoUrl("dish_video");
+    const msg = url
+      ? `🎬 ${url}\n\nЧто заметил?`
+      : `${TEXTS.videoPlaceholder}\n\nЧто заметил?`;
+    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "dish_greenleaf" }]] } });
     return;
   }
   if (data === "continue_after_video_dish_video" || data === "dish_greenleaf") {
@@ -1054,7 +1071,6 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     await updateStage(session.id, "pads_reaction");
     const reaction = getPadsReaction(intent);
     await bot.sendMessage(chatId, reaction, { parse_mode: "Markdown" });
-    await bot.sendMessage(chatId, TEXTS.padsShortComposition, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "pads_short" }, { text: "Подробнее", callback_data: "pads_detailed" }], [{ text: "К видео", callback_data: "pads_video" }]] } });
     return;
   }
   if (data === "pads_short") {
@@ -1069,8 +1085,11 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
   if (data === "pads_video") {
     await updateStage(session.id, "pads_video");
-    await sendVideo(bot, chatId, "pads_video");
-    await bot.sendMessage(chatId, "Что для тебя было самым неожиданным?", { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "pads_greenleaf" }]] } });
+    const url = await getVideoUrl("pads_video");
+    const msg = url
+      ? `🎬 ${url}\n\nЧто для тебя было самым неожиданным?`
+      : `${TEXTS.videoPlaceholder}\n\nЧто для тебя было самым неожиданным?`;
+    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "pads_greenleaf" }]] } });
     return;
   }
   if (data === "continue_after_video_pads_video" || data === "pads_greenleaf") {
@@ -1098,8 +1117,11 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
   if (data === "toilet_video") {
     await updateStage(session.id, "toilet_video");
-    await sendVideo(bot, chatId, "toilet_video");
-    await bot.sendMessage(chatId, "Что заметил?", { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "toilet_greenleaf" }]] } });
+    const url = await getVideoUrl("toilet_video");
+    const msg = url
+      ? `🎬 ${url}\n\nЧто заметил?`
+      : `${TEXTS.videoPlaceholder}\n\nЧто заметил?`;
+    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "toilet_greenleaf" }]] } });
     return;
   }
   if (data === "continue_after_video_toilet_video" || data === "toilet_greenleaf") {
