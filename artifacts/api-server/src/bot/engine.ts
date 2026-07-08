@@ -184,13 +184,19 @@ async function notifyAdmins(bot: TelegramBot, text: string) {
 // ─── Stage handlers ────────────────────────────────────────────────────────────
 
 async function handleIntro(bot: TelegramBot, chatId: number, session: BotSession) {
-  await updateStage(session.id, "intro_video");
+  await updateStage(session.id, "intro");
   await bot.sendMessage(chatId, TEXTS.intro, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
   await sendVideo(bot, chatId, "intro_video");
-  await bot.sendMessage(chatId, "Готов начать разбор?", {
-    reply_markup: { inline_keyboard: [[{ text: "▶️ Начать", callback_data: "start_depth_choice" }]] }
+  await bot.sendMessage(chatId, "Готов начать?", {
+    reply_markup: { inline_keyboard: [[{ text: "▶️ Начать", callback_data: "start_name" }]] }
   });
   await saveMessage(session.id, "bot", TEXTS.intro, "intro");
+}
+
+async function handleNameQuestion(bot: TelegramBot, chatId: number, session: BotSession) {
+  await updateStage(session.id, "name_question");
+  await bot.sendMessage(chatId, TEXTS.nameQuestion, { parse_mode: "Markdown" });
+  await saveMessage(session.id, "bot", TEXTS.nameQuestion, "name_question");
 }
 
 async function handleDepthChoice(bot: TelegramBot, chatId: number, session: BotSession) {
@@ -386,6 +392,15 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
 
   // Stage-specific text handling
   switch (stage) {
+    case "name_question": {
+      await saveMessage(session.id, "user", text, stage);
+      const name = text.trim().split(/\s+/)[0];
+      await db.update(userSessionsTable).set({ firstName: name, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
+      const greeting = name ? `Приятно, ${name}. Тогда пойдём спокойно и без занудства.` : `Приятно. Пойдём спокойно.`;
+      await bot.sendMessage(chatId, greeting, { parse_mode: "Markdown" });
+      await handleDepthChoice(bot, chatId, { ...session, firstName: name });
+      break;
+    }
     case "laundry_question": {
       let intent: string = classifyText(text);
       const brandName = detectBrandName(text) || undefined;
@@ -396,11 +411,36 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       if (!reaction) reaction = getLaundryReaction(intent, brandName);
       await updateStage(session.id, "laundry_reaction");
       await bot.sendMessage(chatId, reaction, { parse_mode: "Markdown" });
-      await bot.sendMessage(chatId, TEXTS.laundryShortComposition, {
-        parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "laundry_short" }, { text: "Подробнее", callback_data: "laundry_detailed" }], [{ text: "К видео", callback_data: "laundry_video" }]] }
-      });
       await saveMessage(session.id, "bot", reaction, "laundry_reaction", intent);
+      break;
+    }
+    case "laundry_reaction": {
+      // User replied to laundry reaction — offer composition or continue
+      const quick = classifyText(text);
+      if (quick === "affirmative" || quick === "other") {
+        await updateStage(session.id, "laundry_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.laundryShortComposition, {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "laundry_short" }, { text: "Подробнее", callback_data: "laundry_detailed" }], [{ text: "К видео", callback_data: "laundry_video" }]] }
+        });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
+      break;
+    }
+    case "laundry_short_or_details": {
+      // User text during laundry composition stage — treat as shortcut
+      const quick = classifyText(text);
+      if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
+        await updateStage(session.id, "laundry_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.laundryShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "laundry_video" }], [{ text: "К расчёту", callback_data: "laundry_calc" }]] } });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
       break;
     }
     case "dish_question": {
@@ -413,11 +453,34 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       if (!reaction) reaction = getDishReaction(intent, brandName);
       await updateStage(session.id, "dish_reaction");
       await bot.sendMessage(chatId, reaction, { parse_mode: "Markdown" });
-      await bot.sendMessage(chatId, TEXTS.dishShortComposition, {
-        parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "dish_short" }, { text: "Подробнее", callback_data: "dish_detailed" }], [{ text: "К видео", callback_data: "dish_video" }]] }
-      });
       await saveMessage(session.id, "bot", reaction, "dish_reaction", intent);
+      break;
+    }
+    case "dish_reaction": {
+      const quick = classifyText(text);
+      if (quick === "affirmative" || quick === "other") {
+        await updateStage(session.id, "dish_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.dishShortComposition, {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "dish_short" }, { text: "Подробнее", callback_data: "dish_detailed" }], [{ text: "К видео", callback_data: "dish_video" }]] }
+        });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
+      break;
+    }
+    case "dish_short_or_details": {
+      const quick = classifyText(text);
+      if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
+        await updateStage(session.id, "dish_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.dishShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "dish_video" }], [{ text: "К расчёту", callback_data: "dish_calc" }]] } });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
       break;
     }
     case "toilet_question": {
@@ -428,10 +491,6 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const reaction = getToiletReaction(intent, brandName);
       await updateStage(session.id, "toilet_reaction");
       await bot.sendMessage(chatId, reaction, { parse_mode: "Markdown" });
-      await bot.sendMessage(chatId, TEXTS.toiletShortComposition, {
-        parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "toilet_short" }, { text: "Подробнее", callback_data: "toilet_detailed" }], [{ text: "К видео", callback_data: "toilet_video" }]] }
-      });
       await saveMessage(session.id, "bot", reaction, "toilet_reaction", intent);
       break;
     }
@@ -453,8 +512,80 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       await saveMessage(session.id, "bot", TEXTS.leadCaptureContact, "lead_capture_contact");
       break;
     }
+    case "pads_reaction": {
+      const quick = classifyText(text);
+      if (quick === "affirmative" || quick === "other") {
+        await updateStage(session.id, "pads_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.padsShortComposition, {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "pads_short" }, { text: "Подробнее", callback_data: "pads_detailed" }], [{ text: "К видео", callback_data: "pads_video" }]] }
+        });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
+      break;
+    }
+    case "pads_short_or_details": {
+      const quick = classifyText(text);
+      if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
+        await updateStage(session.id, "pads_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.padsShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "pads_video" }], [{ text: "К расчёту", callback_data: "pads_calc" }]] } });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
+      break;
+    }
+    case "toilet_reaction": {
+      const quick = classifyText(text);
+      if (quick === "affirmative" || quick === "other") {
+        await updateStage(session.id, "toilet_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.toiletShortComposition, {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "toilet_short" }, { text: "Подробнее", callback_data: "toilet_detailed" }], [{ text: "К видео", callback_data: "toilet_video" }]] }
+        });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
+      break;
+    }
+    case "toilet_short_or_details": {
+      const quick = classifyText(text);
+      if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
+        await updateStage(session.id, "toilet_short_or_details");
+        await bot.sendMessage(chatId, TEXTS.toiletShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "toilet_video" }], [{ text: "К расчёту", callback_data: "toilet_calc" }]] } });
+      } else {
+        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+      }
+      break;
+    }
     default: {
       await saveMessage(session.id, "user", text, stage, quickIntent);
+      // If user sends accidental short message during a reaction stage, stay on topic
+      const reactionStages = ["laundry_reaction", "dish_reaction", "pads_reaction", "toilet_reaction"];
+      if (reactionStages.includes(stage) && text.length <= 2) {
+        const topicMap: Record<string, { q: string; brand: string }> = {
+          laundry_reaction: { q: "чем обычно стираешь", brand: "Persil, Ariel, Tide, Losk, Ласка, Synergetic" },
+          dish_reaction: { q: "чем обычно моешь посуду", brand: "Fairy, AOS, Synergetic, BioMio" },
+          pads_reaction: { q: "задумывался ли ты о составе прокладок", brand: "" },
+          toilet_reaction: { q: "какую туалетную бумагу обычно покупаете", brand: "" },
+        };
+        const topic = topicMap[stage];
+        const msg = `Похоже, сообщение случайно отправилось. Ничего страшного.
+
+Мы сейчас на этой теме. Напиши, ${topic.q} ${topic.brand ? `— можно просто бренд или "не знаю".` : ""}`;
+        await bot.sendMessage(chatId, msg, {
+          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
+        });
+        break;
+      }
       if (quickIntent === "question" || quickIntent === "other") {
         let aiAnswer: string | null = null;
         try { aiAnswer = await answerQuestion(text, stage, session.id); } catch {}
@@ -741,6 +872,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   if (data === "admin_menu" && adminFlag) { await showAdminMenu(bot, chatId); return; }
 
   // ── Scenario ──
+  if (data === "start_name") { await handleNameQuestion(bot, chatId, session); return; }
   if (data === "start_depth_choice") { await handleDepthChoice(bot, chatId, session); return; }
 
   if (data === "depth_quick") {
@@ -1048,12 +1180,14 @@ async function continueFromStage(bot: TelegramBot, chatId: number, session: BotS
   const map: Record<string, () => Promise<void>> = {
     "intro": () => handleIntro(bot, chatId, session),
     "intro_video": () => handleDepthChoice(bot, chatId, session),
+    "name_question": () => handleNameQuestion(bot, chatId, session),
     "depth_choice": () => handleDepthChoice(bot, chatId, session),
     "laundry_question": () => handleLaundryQuestion(bot, chatId, session),
     "laundry_reaction": () => handleLaundryQuestion(bot, chatId, session),
     "dish_question": () => handleDishQuestion(bot, chatId, session),
     "dish_reaction": () => handleDishQuestion(bot, chatId, session),
     "pads_intro": () => handlePadsIntro(bot, chatId, session),
+    "pads_reaction": () => handlePadsIntro(bot, chatId, session),
     "toilet_question": () => handleToiletQuestion(bot, chatId, session),
     "toilet_reaction": () => handleToiletQuestion(bot, chatId, session),
     "family_question": () => handleFamilyQuestion(bot, chatId, session),
