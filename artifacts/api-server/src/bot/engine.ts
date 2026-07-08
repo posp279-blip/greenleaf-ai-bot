@@ -148,7 +148,7 @@ async function sendVideo(bot: TelegramBot, chatId: number, key: string) {
     await bot.sendMessage(chatId, `🎬 ${url}`);
   } else {
     await bot.sendMessage(chatId, TEXTS.videoPlaceholder, {
-      reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: `continue_after_video_${key}` }]] }
+      parse_mode: "Markdown"
     });
   }
 }
@@ -166,10 +166,7 @@ async function sendCalcTable(bot: TelegramBot, chatId: number) {
   }
   table += `\n*ИТОГО:* ${totalMass.toLocaleString("ru")} / ${totalGreen.toLocaleString("ru")} / ${totalSaving.toLocaleString("ru")} ₽\n`;
   table += `\n_Расчёт примерный._`;
-  await bot.sendMessage(chatId, table, {
-    parse_mode: "Markdown",
-    reply_markup: { inline_keyboard: [[{ text: "← Назад", callback_data: "back_to_conclusion" }]] }
-  });
+  await bot.sendMessage(chatId, table, { parse_mode: "Markdown" });
 }
 
 async function notifyAdmins(bot: TelegramBot, text: string) {
@@ -186,10 +183,18 @@ async function notifyAdmins(bot: TelegramBot, text: string) {
 async function handleIntro(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "intro");
   await bot.sendMessage(chatId, TEXTS.intro, { parse_mode: "Markdown", reply_markup: getReplyKeyboard() });
-  await sendVideo(bot, chatId, "intro_video");
-  await bot.sendMessage(chatId, "Готов начать?", {
-    reply_markup: { inline_keyboard: [[{ text: "▶️ Начать", callback_data: "start_name" }]] }
-  });
+  const url = await getVideoUrl("intro_video");
+  if (url) {
+    await bot.sendMessage(chatId, `🎬 ${url}`, {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: [[{ text: "▶️ Начать", callback_data: "start_name" }]] }
+    });
+  } else {
+    await bot.sendMessage(chatId, TEXTS.videoPlaceholder, {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: [[{ text: "▶️ Начать", callback_data: "start_name" }]] }
+    });
+  }
   await saveMessage(session.id, "bot", TEXTS.intro, "intro");
 }
 
@@ -202,17 +207,7 @@ async function handleNameQuestion(bot: TelegramBot, chatId: number, session: Bot
 async function handleDepthChoice(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "depth_choice");
   await db.update(userSessionsTable).set({ menuShown: true, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-  await bot.sendMessage(chatId, TEXTS.depthChoice, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "⚡ Быстро по сути", callback_data: "depth_quick" }],
-        [{ text: "🔍 Подробно", callback_data: "depth_detailed" }],
-        [{ text: "💰 Сначала хочу увидеть экономию", callback_data: "depth_savings" }],
-        [{ text: "🏠 Главное меню", callback_data: "menu_main" }],
-      ]
-    }
-  });
+  await bot.sendMessage(chatId, TEXTS.depthChoice, { parse_mode: "Markdown" });
   await saveMessage(session.id, "bot", TEXTS.depthChoice, "depth_choice");
 }
 
@@ -230,12 +225,7 @@ async function handleDishQuestion(bot: TelegramBot, chatId: number, session: Bot
 
 async function handlePadsIntro(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "pads_intro");
-  await bot.sendMessage(chatId, TEXTS.padsIntro, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [[{ text: "Да, задумывался", callback_data: "pads_yes" }, { text: "Нет", callback_data: "pads_no" }]]
-    }
-  });
+  await bot.sendMessage(chatId, TEXTS.padsIntro, { parse_mode: "Markdown" });
   await saveMessage(session.id, "bot", TEXTS.padsIntro, "pads_intro");
 }
 
@@ -253,15 +243,7 @@ async function handleFamilyQuestion(bot: TelegramBot, chatId: number, session: B
 
 async function handleBigCalculation(bot: TelegramBot, chatId: number, session: BotSession) {
   await updateStage(session.id, "big_calculation");
-  await bot.sendMessage(chatId, TEXTS.bigCalculation, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "📊 Показать таблицу по 13 категориям", callback_data: "show_table" }],
-        [{ text: "Дальше →", callback_data: "calc_conclusion" }],
-      ]
-    }
-  });
+  await bot.sendMessage(chatId, TEXTS.bigCalculation, { parse_mode: "Markdown" });
   await saveMessage(session.id, "bot", TEXTS.bigCalculation, "big_calculation");
 }
 
@@ -272,7 +254,6 @@ async function handleFinalQuestion(bot: TelegramBot, chatId: number, session: Bo
     reply_markup: {
       inline_keyboard: [
         [{ text: "✅ Хочу открыть условия Greenleaf", callback_data: "lead_capture_start" }],
-        [{ text: "🤔 Пока подумаю", callback_data: "final_doubt" }],
       ]
     }
   });
@@ -367,26 +348,17 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
   // Global objection handlers
   if (quickIntent === "objection_pyramid") {
     await saveMessage(session.id, "user", text, stage, quickIntent);
-    await bot.sendMessage(chatId, getObjectionPyramidResponse(), {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "Продолжить разбор", callback_data: "menu_continue" }]] }
-    });
+    await bot.sendMessage(chatId, getObjectionPyramidResponse(), { parse_mode: "Markdown" });
     return;
   }
   if (quickIntent === "objection_price") {
     await saveMessage(session.id, "user", text, stage, quickIntent);
-    await bot.sendMessage(chatId, getObjectionPriceResponse(), {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "Продолжить разбор", callback_data: "menu_continue" }]] }
-    });
+    await bot.sendMessage(chatId, getObjectionPriceResponse(), { parse_mode: "Markdown" });
     return;
   }
   if (quickIntent === "wants_registration" && !["final_question", "lead_capture_name", "lead_capture_contact", "lead_capture_comment", "completed"].includes(stage)) {
     await saveMessage(session.id, "user", text, stage, quickIntent);
-    await bot.sendMessage(chatId, getEarlyRegistrationResponse(), {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "Продолжить разбор", callback_data: "menu_continue" }]] }
-    });
+    await bot.sendMessage(chatId, getEarlyRegistrationResponse(), { parse_mode: "Markdown" });
     return;
   }
 
@@ -421,14 +393,10 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const quick = classifyText(text);
       if (quick === "affirmative" || quick === "other") {
         await updateStage(session.id, "laundry_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.laundryShortComposition, {
-          parse_mode: "Markdown",
-          reply_markup: { inline_keyboard: [[{ text: "Показать, как это выглядит на примере Greenleaf", callback_data: "laundry_greenleaf" }]] }
-        });
+        await bot.sendMessage(chatId, TEXTS.laundryShortComposition, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.laundryShortComposition, "laundry_short_or_details");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", { parse_mode: "Markdown" });
       }
       break;
     }
@@ -436,11 +404,11 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const quick = classifyText(text);
       if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
         await updateStage(session.id, "laundry_greenleaf");
-        await bot.sendMessage(chatId, TEXTS.laundryGreenleaf, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К расчёту", callback_data: "laundry_calc" }]] } });
+        await bot.sendMessage(chatId, TEXTS.laundryGreenleaf, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.laundryGreenleaf, "laundry_greenleaf");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await updateStage(session.id, "laundry_question");
+        await bot.sendMessage(chatId, "Понял. Давай вернёмся к стирке.", { parse_mode: "Markdown" });
       }
       break;
     }
@@ -461,26 +429,22 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const quick = classifyText(text);
       if (quick === "affirmative" || quick === "other") {
         await updateStage(session.id, "dish_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.dishShortComposition, {
-          parse_mode: "Markdown",
-          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "dish_short" }, { text: "Подробнее", callback_data: "dish_detailed" }], [{ text: "К видео", callback_data: "dish_video" }]] }
-        });
+        await bot.sendMessage(chatId, TEXTS.dishShortComposition, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.dishShortComposition, "dish_short_or_details");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", { parse_mode: "Markdown" });
       }
       break;
     }
     case "dish_short_or_details": {
       const quick = classifyText(text);
       if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
-        await updateStage(session.id, "dish_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.dishShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "dish_video" }], [{ text: "К расчёту", callback_data: "dish_calc" }]] } });
+        await updateStage(session.id, "dish_greenleaf");
+        await bot.sendMessage(chatId, TEXTS.dishGreenleaf, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.dishGreenleaf, "dish_greenleaf");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await updateStage(session.id, "dish_question");
+        await bot.sendMessage(chatId, "Понял. Давай вернёмся к посуде.", { parse_mode: "Markdown" });
       }
       break;
     }
@@ -502,15 +466,8 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       await db.update(userSessionsTable).set({ familyAdults: count, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
       await updateStage(session.id, "big_calculation");
       const msg = `Понял, ${count} человек.\n\n${TEXTS.bigCalculation}`;
-      await bot.sendMessage(chatId, msg, {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "📊 Показать таблицу по 13 категориям", callback_data: "show_table" }],
-            [{ text: "Дальше →", callback_data: "calc_conclusion" }],
-          ]
-        }
-      });
+      await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", msg, "big_calculation");
       break;
     }
     case "lead_capture_name": {
@@ -527,26 +484,22 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const quick = classifyText(text);
       if (quick === "affirmative" || quick === "other") {
         await updateStage(session.id, "pads_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.padsShortComposition, {
-          parse_mode: "Markdown",
-          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "pads_short" }, { text: "Подробнее", callback_data: "pads_detailed" }], [{ text: "К видео", callback_data: "pads_video" }]] }
-        });
+        await bot.sendMessage(chatId, TEXTS.padsShortComposition, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.padsShortComposition, "pads_short_or_details");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", { parse_mode: "Markdown" });
       }
       break;
     }
     case "pads_short_or_details": {
       const quick = classifyText(text);
       if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
-        await updateStage(session.id, "pads_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.padsShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "pads_video" }], [{ text: "К расчёту", callback_data: "pads_calc" }]] } });
+        await updateStage(session.id, "pads_greenleaf");
+        await bot.sendMessage(chatId, TEXTS.padsGreenleaf, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.padsGreenleaf, "pads_greenleaf");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await updateStage(session.id, "pads_intro");
+        await bot.sendMessage(chatId, "Понял. Давай вернёмся к прокладкам.", { parse_mode: "Markdown" });
       }
       break;
     }
@@ -554,27 +507,271 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
       const quick = classifyText(text);
       if (quick === "affirmative" || quick === "other") {
         await updateStage(session.id, "toilet_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.toiletShortComposition, {
-          parse_mode: "Markdown",
-          reply_markup: { inline_keyboard: [[{ text: "Коротко", callback_data: "toilet_short" }, { text: "Подробнее", callback_data: "toilet_detailed" }], [{ text: "К видео", callback_data: "toilet_video" }]] }
-        });
+        await bot.sendMessage(chatId, TEXTS.toiletShortComposition, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.toiletShortComposition, "toilet_short_or_details");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, "Понял. Давай продолжим разбор.", { parse_mode: "Markdown" });
       }
       break;
     }
     case "toilet_short_or_details": {
       const quick = classifyText(text);
       if (quick === "affirmative" || /^(ok|okay|ок|окей|угу|ага)$/.test(text.toLowerCase().trim())) {
-        await updateStage(session.id, "toilet_short_or_details");
-        await bot.sendMessage(chatId, TEXTS.toiletShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "toilet_video" }], [{ text: "К расчёту", callback_data: "toilet_calc" }]] } });
+        await updateStage(session.id, "toilet_greenleaf");
+        await bot.sendMessage(chatId, TEXTS.toiletGreenleaf, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.toiletGreenleaf, "toilet_greenleaf");
       } else {
-        await bot.sendMessage(chatId, "Понял. Давай продолжим.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await updateStage(session.id, "toilet_question");
+        await bot.sendMessage(chatId, "Понял. Давай вернёмся к бумаге.", { parse_mode: "Markdown" });
       }
+      break;
+    }
+    // Product category continuation: Greenleaf → Calc
+    case "laundry_greenleaf": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "laundry_calc");
+      await bot.sendMessage(chatId, TEXTS.laundryCalc, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.laundryCalc, "laundry_calc");
+      break;
+    }
+    case "dish_greenleaf": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "dish_calc");
+      await bot.sendMessage(chatId, TEXTS.dishCalc, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.dishCalc, "dish_calc");
+      break;
+    }
+    case "pads_greenleaf": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "pads_calc");
+      await bot.sendMessage(chatId, TEXTS.padsCalc, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.padsCalc, "pads_calc");
+      break;
+    }
+    case "toilet_greenleaf": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "toilet_calc");
+      await bot.sendMessage(chatId, TEXTS.toiletCalc, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.toiletCalc, "toilet_calc");
+      break;
+    }
+    // Post-calculation chain (text-driven, no buttons)
+    case "big_calculation": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "calculation_conclusion");
+      await bot.sendMessage(chatId, TEXTS.calculationConclusion, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.calculationConclusion, "calculation_conclusion");
+      break;
+    }
+    case "calculation_conclusion": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "company_video");
+      await bot.sendMessage(chatId, TEXTS.companyVideo, { parse_mode: "Markdown" });
+      const url = await getVideoUrl("company_video");
+      if (url) await bot.sendMessage(chatId, `🎬 ${url}`, { parse_mode: "Markdown" });
+      else await bot.sendMessage(chatId, TEXTS.videoPlaceholder, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.companyVideo, "company_video");
+      break;
+    }
+    case "company_video": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "quality_block");
+      await bot.sendMessage(chatId, TEXTS.qualityBlock, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.qualityBlock, "quality_block");
+      break;
+    }
+    case "quality_block": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "purchase_interest_question");
+      await bot.sendMessage(chatId, TEXTS.purchaseInterestQuestion, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.purchaseInterestQuestion, "purchase_interest_question");
+      break;
+    }
+    case "purchase_interest_question": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "purchase_options");
+      await bot.sendMessage(chatId, TEXTS.purchaseOptions, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.purchaseOptions, "purchase_options");
+      break;
+    }
+    case "purchase_options": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "partnership_explain");
+      await bot.sendMessage(chatId, TEXTS.partnershipExplain, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.partnershipExplain, "partnership_explain");
+      break;
+    }
+    case "partnership_explain": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "start_28900");
+      await bot.sendMessage(chatId, TEXTS.starterKit, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.starterKit, "start_28900");
+      break;
+    }
+    case "start_28900": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "cashback_10");
+      await bot.sendMessage(chatId, TEXTS.cashback10, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.cashback10, "cashback_10");
+      break;
+    }
+    case "cashback_10": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "bonus_video");
+      await bot.sendMessage(chatId, TEXTS.bonusVideo, { parse_mode: "Markdown" });
+      const url = await getVideoUrl("bonus_video");
+      if (url) await bot.sendMessage(chatId, `🎬 ${url}`, { parse_mode: "Markdown" });
+      else await bot.sendMessage(chatId, TEXTS.videoPlaceholder, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.bonusVideo, "bonus_video");
+      break;
+    }
+    case "bonus_video": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "bonus_explain");
+      await bot.sendMessage(chatId, TEXTS.bonusExplain, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.bonusExplain, "bonus_explain");
+      break;
+    }
+    case "bonus_explain": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "free_product_logic");
+      await bot.sendMessage(chatId, TEXTS.freeProductLogic, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.freeProductLogic, "free_product_logic");
+      break;
+    }
+    case "free_product_logic": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "model_3x3");
+      await bot.sendMessage(chatId, TEXTS.model3x3, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.model3x3, "model_3x3");
+      break;
+    }
+    case "model_3x3": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "why_show_to_3_people");
+      await bot.sendMessage(chatId, TEXTS.why3People, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.why3People, "why_show_to_3_people");
+      break;
+    }
+    case "why_show_to_3_people": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "model_3x3_result");
+      await bot.sendMessage(chatId, TEXTS.model3x3Result, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.model3x3Result, "model_3x3_result");
+      break;
+    }
+    case "model_3x3_result": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "final_logic");
+      await bot.sendMessage(chatId, TEXTS.finalLogic, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.finalLogic, "final_logic");
+      break;
+    }
+    case "final_logic": {
+      await saveMessage(session.id, "user", text, stage);
+      await handleFinalQuestion(bot, chatId, session);
+      break;
+    }
+    case "final_question": {
+      await saveMessage(session.id, "user", text, stage);
+      const quick = classifyText(text);
+      if (quick === "affirmative" || /^да|ok|yes|хочу|yes/i.test(text.toLowerCase().trim())) {
+        await handleLeadCapture(bot, chatId, session);
+      } else {
+        await updateStage(session.id, "doubt");
+        await bot.sendMessage(chatId, TEXTS.doubt, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.doubt, "doubt");
+      }
+      break;
+    }
+    case "doubt": {
+      await saveMessage(session.id, "user", text, stage);
+      const quick = classifyText(text);
+      if (quick === "affirmative" || /^да|ok|yes|хочу|yes/i.test(text.toLowerCase().trim())) {
+        await handleLeadCapture(bot, chatId, session);
+      } else {
+        await bot.sendMessage(chatId, "Понял. Если появятся вопросы — пиши в любой момент. Или нажми «Главное меню» внизу.", { parse_mode: "Markdown" });
+      }
+      break;
+    }
+    // Video stages (text-driven, no buttons)
+    case "laundry_video": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "laundry_greenleaf");
+      await bot.sendMessage(chatId, TEXTS.laundryGreenleaf, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.laundryGreenleaf, "laundry_greenleaf");
+      break;
+    }
+    case "dish_video": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "dish_greenleaf");
+      await bot.sendMessage(chatId, TEXTS.dishGreenleaf, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.dishGreenleaf, "dish_greenleaf");
+      break;
+    }
+    case "pads_video": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "pads_greenleaf");
+      await bot.sendMessage(chatId, TEXTS.padsGreenleaf, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.padsGreenleaf, "pads_greenleaf");
+      break;
+    }
+    case "toilet_video": {
+      await saveMessage(session.id, "user", text, stage);
+      await updateStage(session.id, "toilet_greenleaf");
+      await bot.sendMessage(chatId, TEXTS.toiletGreenleaf, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.toiletGreenleaf, "toilet_greenleaf");
+      break;
+    }
+    // Calc stage → next category
+    case "laundry_calc": {
+      await saveMessage(session.id, "user", text, stage);
+      await handleDishQuestion(bot, chatId, session);
+      break;
+    }
+    case "dish_calc": {
+      await saveMessage(session.id, "user", text, stage);
+      await handlePadsIntro(bot, chatId, session);
+      break;
+    }
+    case "pads_calc": {
+      await saveMessage(session.id, "user", text, stage);
+      await handleToiletQuestion(bot, chatId, session);
+      break;
+    }
+    case "toilet_calc": {
+      await saveMessage(session.id, "user", text, stage);
+      await handleFamilyQuestion(bot, chatId, session);
+      break;
+    }
+    // Depth choice (text-driven)
+    case "depth_choice": {
+      await saveMessage(session.id, "user", text, stage);
+      const quick = classifyText(text);
+      if (/цифр|расчёт|эконом|сколько|money|деньг/i.test(text.toLowerCase())) {
+        await updateStage(session.id, "depth_choice");
+        await bot.sendMessage(chatId, TEXTS.quickSavingsIntro, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.quickSavingsIntro, "depth_choice");
+      } else if (/подробн|детал|detail/i.test(text.toLowerCase())) {
+        await updateStage(session.id, "laundry_question");
+        await bot.sendMessage(chatId, `${TEXTS.deepIntro}\n\n${TEXTS.laundryQuestion}`, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", `${TEXTS.deepIntro}\n\n${TEXTS.laundryQuestion}`, "laundry_question");
+      } else {
+        await updateStage(session.id, "laundry_question");
+        await bot.sendMessage(chatId, TEXTS.laundryQuestion, { parse_mode: "Markdown" });
+        await saveMessage(session.id, "bot", TEXTS.laundryQuestion, "laundry_question");
+      }
+      break;
+    }
+    // Pads intro → pads reaction
+    case "pads_intro": {
+      await saveMessage(session.id, "user", text, stage);
+      const quick = classifyText(text);
+      const intent = quick === "affirmative" ? "affirmative" : quick === "negative" ? "negative" : "other";
+      const reaction = getPadsReaction(intent);
+      await updateStage(session.id, "pads_reaction");
+      await bot.sendMessage(chatId, reaction, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", reaction, "pads_reaction", intent);
       break;
     }
     default: {
@@ -592,23 +789,16 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
         const msg = `Похоже, сообщение случайно отправилось. Ничего страшного.
 
 Мы сейчас на этой теме. Напиши, ${topic.q} ${topic.brand ? `— можно просто бренд или "не знаю".` : ""}`;
-        await bot.sendMessage(chatId, msg, {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
         break;
       }
       if (quickIntent === "question" || quickIntent === "other") {
         let aiAnswer: string | null = null;
         try { aiAnswer = await answerQuestion(text, stage, session.id); } catch {}
         const response = aiAnswer || "Хороший вопрос. Давай продолжим разбор.";
-        await bot.sendMessage(chatId, response, {
-          parse_mode: "Markdown",
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
       } else {
-        await bot.sendMessage(chatId, "Хорошо, продолжаем.", {
-          reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }]] }
-        });
+        await bot.sendMessage(chatId, "Хорошо, продолжаем.", { parse_mode: "Markdown" });
       }
     }
   }
@@ -643,10 +833,7 @@ async function handleLeadInput(bot: TelegramBot, chatId: number, userId: number,
 
     await db.update(adminStateTable).set({ mode: "idle", pendingAction: null, payload: null, updatedAt: new Date() }).where(eq(adminStateTable.telegramUserId, userId));
 
-    await bot.sendMessage(chatId, TEXTS.leadDone, {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "🏠 Главное меню", callback_data: "menu_main" }], [{ text: "📋 Моя заявка", callback_data: "menu_my_lead" }], [{ text: "❓ Задать вопрос", callback_data: "menu_question" }]] }
-    });
+    await bot.sendMessage(chatId, TEXTS.leadDone, { parse_mode: "Markdown" });
     await saveMessage(session.id, "bot", TEXTS.leadDone, "completed");
 
     // Notify the sponsor partner (or admins for organic leads)
@@ -699,10 +886,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
 
   if (data === "menu_calc") {
-    await bot.sendMessage(chatId, TEXTS.bigCalculation, {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "📊 Показать таблицу", callback_data: "show_table" }], [{ text: "Продолжить разбор", callback_data: "menu_continue" }]] }
-    });
+    await bot.sendMessage(chatId, TEXTS.bigCalculation, { parse_mode: "Markdown" });
     return;
   }
 
@@ -715,9 +899,7 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "menu_my_lead") {
     if (!session.leadId) {
-      await bot.sendMessage(chatId, TEXTS.noLeadYet, {
-        reply_markup: { inline_keyboard: [[{ text: "Продолжить", callback_data: "menu_continue" }], [{ text: "К расчёту", callback_data: "menu_calc" }]] }
-      });
+      await bot.sendMessage(chatId, TEXTS.noLeadYet, { parse_mode: "Markdown" });
     } else {
       const leads = await db.select().from(leadsTable).where(eq(leadsTable.id, session.leadId));
       const lead = leads[0];
@@ -902,110 +1084,107 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
 
   if (data === "depth_savings") {
     await db.update(userSessionsTable).set({ depthMode: "savings", updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-    await bot.sendMessage(chatId, TEXTS.quickSavingsIntro, {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "Пройти разбор по категориям", callback_data: "depth_quick" }], [{ text: "📊 Таблица 13 категорий", callback_data: "show_table_quick" }]] }
-    });
+    await bot.sendMessage(chatId, TEXTS.quickSavingsIntro, { parse_mode: "Markdown" });
     return;
   }
 
   if (data === "show_table" || data === "show_table_quick") { await sendCalcTable(bot, chatId); return; }
   if (data === "back_to_conclusion") {
-    await bot.sendMessage(chatId, TEXTS.calculationConclusion, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "calc_conclusion" }]] } });
+    await bot.sendMessage(chatId, TEXTS.calculationConclusion, { parse_mode: "Markdown" });
     return;
   }
 
   if (data === "calc_conclusion") {
     await updateStage(session.id, "calculation_conclusion");
-    await bot.sendMessage(chatId, TEXTS.calculationConclusion, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "company_video" }]] } });
+    await bot.sendMessage(chatId, TEXTS.calculationConclusion, { parse_mode: "Markdown" });
     return;
   }
   if (data === "company_video") {
     await updateStage(session.id, "company_video");
     await bot.sendMessage(chatId, TEXTS.companyVideo, { parse_mode: "Markdown" });
     await sendVideo(bot, chatId, "company_video");
-    await bot.sendMessage(chatId, "Теперь понятнее, что Greenleaf — это не просто ещё одно средство для дома.", { reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "quality_block" }]] } });
+    await bot.sendMessage(chatId, "Теперь понятнее, что Greenleaf — это не просто ещё одно средство для дома. Напиши что угодно, чтобы продолжить.", { parse_mode: "Markdown" });
     return;
   }
   if (data === "quality_block") {
     await updateStage(session.id, "quality_block");
-    await bot.sendMessage(chatId, TEXTS.qualityBlock, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "purchase_interest" }]] } });
+    await bot.sendMessage(chatId, TEXTS.qualityBlock, { parse_mode: "Markdown" });
     return;
   }
   if (data === "purchase_interest") {
     await updateStage(session.id, "purchase_interest_question");
-    await bot.sendMessage(chatId, TEXTS.purchaseInterestQuestion, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Да, интересно", callback_data: "purchase_options" }], [{ text: "Расскажи подробнее", callback_data: "purchase_options" }]] } });
+    await bot.sendMessage(chatId, TEXTS.purchaseInterestQuestion, { parse_mode: "Markdown" });
     return;
   }
   if (data === "purchase_options") {
     await updateStage(session.id, "purchase_options");
-    await bot.sendMessage(chatId, TEXTS.purchaseOptions, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Разобраться →", callback_data: "partnership_explain" }]] } });
+    await bot.sendMessage(chatId, TEXTS.purchaseOptions, { parse_mode: "Markdown" });
     return;
   }
   if (data === "partnership_explain") {
     await updateStage(session.id, "partnership_explain");
-    await bot.sendMessage(chatId, TEXTS.partnershipExplain, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "starter_kit" }]] } });
+    await bot.sendMessage(chatId, TEXTS.partnershipExplain, { parse_mode: "Markdown" });
     return;
   }
   if (data === "starter_kit") {
     await updateStage(session.id, "start_28900");
-    await bot.sendMessage(chatId, TEXTS.starterKit, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "cashback_block" }]] } });
+    await bot.sendMessage(chatId, TEXTS.starterKit, { parse_mode: "Markdown" });
     return;
   }
   if (data === "cashback_block") {
     await updateStage(session.id, "cashback_10");
-    await bot.sendMessage(chatId, TEXTS.cashback10, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "bonus_video_block" }]] } });
+    await bot.sendMessage(chatId, TEXTS.cashback10, { parse_mode: "Markdown" });
     return;
   }
   if (data === "bonus_video_block") {
     await updateStage(session.id, "bonus_video");
     await bot.sendMessage(chatId, TEXTS.bonusVideo, { parse_mode: "Markdown" });
     await sendVideo(bot, chatId, "bonus_video");
-    await bot.sendMessage(chatId, TEXTS.bonusExplain, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "free_product" }]] } });
+    await bot.sendMessage(chatId, TEXTS.bonusExplain, { parse_mode: "Markdown" });
     return;
   }
   if (data === "free_product") {
     await updateStage(session.id, "free_product_logic");
-    await bot.sendMessage(chatId, TEXTS.freeProductLogic, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "model_3x3_block" }]] } });
+    await bot.sendMessage(chatId, TEXTS.freeProductLogic, { parse_mode: "Markdown" });
     return;
   }
   if (data === "model_3x3_block") {
     await updateStage(session.id, "model_3x3");
-    await bot.sendMessage(chatId, TEXTS.model3x3, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "why_3_people" }]] } });
+    await bot.sendMessage(chatId, TEXTS.model3x3, { parse_mode: "Markdown" });
     return;
   }
   if (data === "why_3_people") {
     await updateStage(session.id, "why_show_to_3_people");
-    await bot.sendMessage(chatId, TEXTS.why3People, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "model_result" }]] } });
+    await bot.sendMessage(chatId, TEXTS.why3People, { parse_mode: "Markdown" });
     return;
   }
   if (data === "model_result") {
     await updateStage(session.id, "model_3x3_result");
-    await bot.sendMessage(chatId, TEXTS.model3x3Result, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "final_logic_block" }]] } });
+    await bot.sendMessage(chatId, TEXTS.model3x3Result, { parse_mode: "Markdown" });
     return;
   }
   if (data === "final_logic_block") {
     await updateStage(session.id, "final_logic");
-    await bot.sendMessage(chatId, TEXTS.finalLogic, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше →", callback_data: "final_q" }]] } });
+    await bot.sendMessage(chatId, TEXTS.finalLogic, { parse_mode: "Markdown" });
     return;
   }
   if (data === "final_q") { await handleFinalQuestion(bot, chatId, session); return; }
   if (data === "lead_capture_start") { await handleLeadCapture(bot, chatId, session); return; }
   if (data === "final_doubt") {
     await updateStage(session.id, "doubt");
-    await bot.sendMessage(chatId, TEXTS.doubt, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Вернуться к расчёту", callback_data: "menu_calc" }], [{ text: "Связаться", callback_data: "menu_contact" }]] } });
+    await bot.sendMessage(chatId, TEXTS.doubt, { parse_mode: "Markdown" });
     return;
   }
 
   // ── Laundry ──
   if (data === "laundry_short") {
     await updateStage(session.id, "laundry_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.laundryShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "laundry_video" }], [{ text: "К расчёту", callback_data: "laundry_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.laundryShort, { parse_mode: "Markdown" });
     return;
   }
   if (data === "laundry_detailed") {
     await updateStage(session.id, "laundry_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.laundryDetailed, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "laundry_video" }], [{ text: "К расчёту", callback_data: "laundry_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.laundryDetailed, { parse_mode: "Markdown" });
     return;
   }
   if (data === "laundry_video") {
@@ -1014,21 +1193,21 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     const msg = url
       ? `🎬 ${url}\n\nЧто для тебя было самым неожиданным?`
       : `${TEXTS.videoPlaceholder}\n\nЧто для тебя было самым неожиданным?`;
-    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "laundry_greenleaf" }]] } });
+    await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
     return;
   }
   if (data === "continue_after_video_laundry_video" || data === "laundry_greenleaf") {
     await updateStage(session.id, "laundry_greenleaf");
-    await bot.sendMessage(chatId, TEXTS.laundryGreenleaf, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Подробнее", callback_data: "laundry_greenleaf_detail" }], [{ text: "К расчёту →", callback_data: "laundry_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.laundryGreenleaf, { parse_mode: "Markdown" });
     return;
   }
   if (data === "laundry_greenleaf_detail") {
-    await bot.sendMessage(chatId, TEXTS.laundryGreenleafDetailed, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К расчёту →", callback_data: "laundry_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.laundryGreenleafDetailed, { parse_mode: "Markdown" });
     return;
   }
   if (data === "laundry_calc") {
     await updateStage(session.id, "laundry_calc");
-    await bot.sendMessage(chatId, TEXTS.laundryCalc, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше — средство для посуды →", callback_data: "dish_start" }]] } });
+    await bot.sendMessage(chatId, TEXTS.laundryCalc, { parse_mode: "Markdown" });
     return;
   }
 
@@ -1036,12 +1215,12 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   if (data === "dish_start") { await handleDishQuestion(bot, chatId, session); return; }
   if (data === "dish_short") {
     await updateStage(session.id, "dish_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.dishShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "dish_video" }], [{ text: "К расчёту", callback_data: "dish_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.dishShort, { parse_mode: "Markdown" });
     return;
   }
   if (data === "dish_detailed") {
     await updateStage(session.id, "dish_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.dishDetailed, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "dish_video" }], [{ text: "К расчёту", callback_data: "dish_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.dishDetailed, { parse_mode: "Markdown" });
     return;
   }
   if (data === "dish_video") {
@@ -1050,17 +1229,17 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     const msg = url
       ? `🎬 ${url}\n\nЧто заметил?`
       : `${TEXTS.videoPlaceholder}\n\nЧто заметил?`;
-    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "dish_greenleaf" }]] } });
+    await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
     return;
   }
   if (data === "continue_after_video_dish_video" || data === "dish_greenleaf") {
     await updateStage(session.id, "dish_greenleaf");
-    await bot.sendMessage(chatId, TEXTS.dishGreenleaf, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К расчёту →", callback_data: "dish_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.dishGreenleaf, { parse_mode: "Markdown" });
     return;
   }
   if (data === "dish_calc") {
     await updateStage(session.id, "dish_calc");
-    await bot.sendMessage(chatId, TEXTS.dishCalc, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше — женская гигиена →", callback_data: "pads_start" }]] } });
+    await bot.sendMessage(chatId, TEXTS.dishCalc, { parse_mode: "Markdown" });
     return;
   }
 
@@ -1075,12 +1254,12 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
   if (data === "pads_short") {
     await updateStage(session.id, "pads_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.padsShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "pads_video" }], [{ text: "К расчёту", callback_data: "pads_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.padsShort, { parse_mode: "Markdown" });
     return;
   }
   if (data === "pads_detailed") {
     await updateStage(session.id, "pads_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.padsDetailed, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "pads_video" }], [{ text: "К расчёту", callback_data: "pads_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.padsDetailed, { parse_mode: "Markdown" });
     return;
   }
   if (data === "pads_video") {
@@ -1089,17 +1268,17 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     const msg = url
       ? `🎬 ${url}\n\nЧто для тебя было самым неожиданным?`
       : `${TEXTS.videoPlaceholder}\n\nЧто для тебя было самым неожиданным?`;
-    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "pads_greenleaf" }]] } });
+    await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
     return;
   }
   if (data === "continue_after_video_pads_video" || data === "pads_greenleaf") {
     await updateStage(session.id, "pads_greenleaf");
-    await bot.sendMessage(chatId, TEXTS.padsGreenleaf, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К расчёту →", callback_data: "pads_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.padsGreenleaf, { parse_mode: "Markdown" });
     return;
   }
   if (data === "pads_calc") {
     await updateStage(session.id, "pads_calc");
-    await bot.sendMessage(chatId, TEXTS.padsCalc, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше — туалетная бумага →", callback_data: "toilet_start" }]] } });
+    await bot.sendMessage(chatId, TEXTS.padsCalc, { parse_mode: "Markdown" });
     return;
   }
 
@@ -1107,12 +1286,12 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   if (data === "toilet_start") { await handleToiletQuestion(bot, chatId, session); return; }
   if (data === "toilet_short") {
     await updateStage(session.id, "toilet_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.toiletShort, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "toilet_video" }], [{ text: "К расчёту", callback_data: "toilet_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.toiletShort, { parse_mode: "Markdown" });
     return;
   }
   if (data === "toilet_detailed") {
     await updateStage(session.id, "toilet_short_or_details");
-    await bot.sendMessage(chatId, TEXTS.toiletDetailed, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К видео", callback_data: "toilet_video" }], [{ text: "К расчёту", callback_data: "toilet_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.toiletDetailed, { parse_mode: "Markdown" });
     return;
   }
   if (data === "toilet_video") {
@@ -1121,17 +1300,17 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     const msg = url
       ? `🎬 ${url}\n\nЧто заметил?`
       : `${TEXTS.videoPlaceholder}\n\nЧто заметил?`;
-    await bot.sendMessage(chatId, msg, { reply_markup: { inline_keyboard: [[{ text: "К продукции Greenleaf →", callback_data: "toilet_greenleaf" }]] } });
+    await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
     return;
   }
   if (data === "continue_after_video_toilet_video" || data === "toilet_greenleaf") {
     await updateStage(session.id, "toilet_greenleaf");
-    await bot.sendMessage(chatId, TEXTS.toiletGreenleaf, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "К расчёту →", callback_data: "toilet_calc" }]] } });
+    await bot.sendMessage(chatId, TEXTS.toiletGreenleaf, { parse_mode: "Markdown" });
     return;
   }
   if (data === "toilet_calc") {
     await updateStage(session.id, "toilet_calc");
-    await bot.sendMessage(chatId, TEXTS.toiletCalc, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Дальше — большой расчёт →", callback_data: "family_q" }]] } });
+    await bot.sendMessage(chatId, TEXTS.toiletCalc, { parse_mode: "Markdown" });
     return;
   }
   if (data === "family_q") { await handleFamilyQuestion(bot, chatId, session); return; }
@@ -1196,7 +1375,7 @@ async function continueFromStage(bot: TelegramBot, chatId: number, session: BotS
   if (stage.startsWith("question_mode_")) {
     const prev = stage.replace("question_mode_", "");
     await updateStage(session.id, prev);
-    await bot.sendMessage(chatId, "Вернулись к разбору!", { reply_markup: { inline_keyboard: [[{ text: "Продолжить →", callback_data: "menu_continue" }]] } });
+    await bot.sendMessage(chatId, "Вернулись к разбору! Напиши что угодно, чтобы продолжить.", { parse_mode: "Markdown" });
     return;
   }
   const map: Record<string, () => Promise<void>> = {
@@ -1206,20 +1385,54 @@ async function continueFromStage(bot: TelegramBot, chatId: number, session: BotS
     "depth_choice": () => handleDepthChoice(bot, chatId, session),
     "laundry_question": () => handleLaundryQuestion(bot, chatId, session),
     "laundry_reaction": () => handleLaundryQuestion(bot, chatId, session),
+    "laundry_short_or_details": () => handleLaundryQuestion(bot, chatId, session),
     "dish_question": () => handleDishQuestion(bot, chatId, session),
     "dish_reaction": () => handleDishQuestion(bot, chatId, session),
+    "dish_short_or_details": () => handleDishQuestion(bot, chatId, session),
     "pads_intro": () => handlePadsIntro(bot, chatId, session),
     "pads_reaction": () => handlePadsIntro(bot, chatId, session),
+    "pads_short_or_details": () => handlePadsIntro(bot, chatId, session),
     "toilet_question": () => handleToiletQuestion(bot, chatId, session),
     "toilet_reaction": () => handleToiletQuestion(bot, chatId, session),
+    "toilet_short_or_details": () => handleToiletQuestion(bot, chatId, session),
     "family_question": () => handleFamilyQuestion(bot, chatId, session),
     "big_calculation": () => handleBigCalculation(bot, chatId, session),
     "final_question": () => handleFinalQuestion(bot, chatId, session),
     "lead_capture_name": () => handleLeadCapture(bot, chatId, session),
+    "lead_capture_contact": () => handleLeadCapture(bot, chatId, session),
+    "lead_capture_comment": () => handleLeadCapture(bot, chatId, session),
+    "laundry_greenleaf": () => handleLaundryQuestion(bot, chatId, session),
+    "dish_greenleaf": () => handleDishQuestion(bot, chatId, session),
+    "pads_greenleaf": () => handlePadsIntro(bot, chatId, session),
+    "toilet_greenleaf": () => handleToiletQuestion(bot, chatId, session),
+    "laundry_calc": () => handleLaundryQuestion(bot, chatId, session),
+    "dish_calc": () => handleDishQuestion(bot, chatId, session),
+    "pads_calc": () => handlePadsIntro(bot, chatId, session),
+    "toilet_calc": () => handleToiletQuestion(bot, chatId, session),
+    "calculation_conclusion": () => handleBigCalculation(bot, chatId, session),
+    "company_video": () => handleBigCalculation(bot, chatId, session),
+    "quality_block": () => handleBigCalculation(bot, chatId, session),
+    "purchase_interest_question": () => handleBigCalculation(bot, chatId, session),
+    "purchase_options": () => handleBigCalculation(bot, chatId, session),
+    "partnership_explain": () => handleBigCalculation(bot, chatId, session),
+    "start_28900": () => handleBigCalculation(bot, chatId, session),
+    "cashback_10": () => handleBigCalculation(bot, chatId, session),
+    "bonus_video": () => handleBigCalculation(bot, chatId, session),
+    "bonus_explain": () => handleBigCalculation(bot, chatId, session),
+    "free_product_logic": () => handleBigCalculation(bot, chatId, session),
+    "model_3x3": () => handleBigCalculation(bot, chatId, session),
+    "why_show_to_3_people": () => handleBigCalculation(bot, chatId, session),
+    "model_3x3_result": () => handleBigCalculation(bot, chatId, session),
+    "final_logic": () => handleBigCalculation(bot, chatId, session),
+    "doubt": () => handleFinalQuestion(bot, chatId, session),
+    "laundry_video": () => handleLaundryQuestion(bot, chatId, session),
+    "dish_video": () => handleDishQuestion(bot, chatId, session),
+    "pads_video": () => handlePadsIntro(bot, chatId, session),
+    "toilet_video": () => handleToiletQuestion(bot, chatId, session),
   };
   const handler = map[stage];
   if (handler) { await handler(); }
-  else { await bot.sendMessage(chatId, `Продолжаем с этапа: ${stage}`, { reply_markup: { inline_keyboard: [[{ text: "Начать заново", callback_data: "restart_confirm" }]] } }); }
+  else { await bot.sendMessage(chatId, `Продолжаем с этапа: ${stage}. Напиши что угодно, чтобы продолжить.`, { parse_mode: "Markdown" }); }
 }
 
 // ─── Admin ─────────────────────────────────────────────────────────────────────
