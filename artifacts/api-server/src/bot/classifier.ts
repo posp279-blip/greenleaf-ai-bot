@@ -16,19 +16,27 @@ export type Intent =
 
 const MASS_MARKET_BRANDS = [
   "ariel",
+  "ариэль",
   "tide",
+  "тайд",
   "persil",
+  "персил",
   "losk",
+  "лоск",
   "ласка",
+  "миф",
+  "myth",
+  "bimax",
+  "бимакс",
+  "bio-max",
+  "dosia",
+  "дося",
   "fairy",
   "aos",
   "zewa",
   "sorti",
   "biolan",
-  "миф",
-  "myth",
   "frosch",
-  "bio-max",
 ];
 
 const ECO_BRANDS = [
