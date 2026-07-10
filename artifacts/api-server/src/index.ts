@@ -39,7 +39,7 @@ function resolvePublicAppUrl(): string {
 function sanitizeDiagnostic(value: unknown): string {
   const raw = value instanceof Error ? value.message : String(value);
   return raw
-    .replace(/postgres(?:ql)?:\/\/[^@\s]+@/gi, "postgresql://***@")
+    .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "postgresql://***")
     .replace(/https:\/\/api\.telegram\.org\/bot[^/\s]+/gi, "https://api.telegram.org/bot***")
     .replace(/\b\d{6,}:[A-Za-z0-9_-]{20,}\b/g, "***")
     .replace(/\s+/g, " ")
@@ -49,7 +49,7 @@ function sanitizeDiagnostic(value: unknown): string {
 
 const publicAppUrl = resolvePublicAppUrl();
 const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
-const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const dbDirectory = fileURLToPath(new URL("../../../lib/db/", import.meta.url));
 
 let phase = "booting";
 let initializationAttempt = 0;
@@ -94,15 +94,28 @@ function sleep(ms: number): Promise<void> {
 }
 
 function syncDatabaseSchema(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    return Promise.reject(new Error("DATABASE_URL is missing in the Railway application process"));
+  }
+
   return new Promise((resolve, reject) => {
-    console.log("[startup] Synchronizing PostgreSQL schema");
+    console.log("[startup] Synchronizing PostgreSQL schema via direct Drizzle CLI credentials");
 
     const child = spawn(
       "pnpm",
-      ["--dir", workspaceRoot, "--filter", "@workspace/db", "run", "push-force"],
+      [
+        "exec",
+        "drizzle-kit",
+        "push",
+        "--dialect=postgresql",
+        "--schema=./src/schema/index.ts",
+        `--url=${databaseUrl}`,
+        "--force",
+      ],
       {
-        cwd: workspaceRoot,
-        env: process.env,
+        cwd: dbDirectory,
+        env: { ...process.env, DATABASE_URL: databaseUrl },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -113,15 +126,8 @@ function syncDatabaseSchema(): Promise<void> {
       diagnosticOutput = `${diagnosticOutput}${text}`.slice(-6000);
     };
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      process.stdout.write(chunk);
-      appendDiagnostic(chunk);
-    });
-
-    child.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(chunk);
-      appendDiagnostic(chunk);
-    });
+    child.stdout?.on("data", appendDiagnostic);
+    child.stderr?.on("data", appendDiagnostic);
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
@@ -140,6 +146,7 @@ function syncDatabaseSchema(): Promise<void> {
     child.once("exit", (code, signal) => {
       clearTimeout(timeout);
       if (code === 0) {
+        console.log("[startup] PostgreSQL schema synchronization completed");
         resolve();
         return;
       }
@@ -188,7 +195,7 @@ async function initializeApplication(): Promise<void> {
       nextRetryInMs = retryDelayMs;
       console.error(
         `[startup] Initialization attempt ${initializationAttempt} failed; retrying in ${retryDelayMs} ms`,
-        error,
+        sanitizeDiagnostic(error),
       );
       await sleep(retryDelayMs);
     }
