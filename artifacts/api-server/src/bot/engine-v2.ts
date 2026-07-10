@@ -139,20 +139,10 @@ async function getActivePartner(userId: number, session?: BotSession): Promise<P
     .limit(1))[0] || null;
 }
 
-async function resolvePartnerId(refCode?: string): Promise<number | null> {
-  if (!refCode) return null;
-  const partner = (await db
-    .select({ id: partnersTable.id })
-    .from(partnersTable)
-    .where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)))
-    .limit(1))[0];
-  return partner?.id || null;
-}
-
 async function getOrCreateSession(
   userId: number,
   username: string | undefined,
-  firstName: string | undefined,
+  _telegramFirstName: string | undefined,
   lastName: string | undefined,
   refCode?: string,
 ): Promise<BotSession> {
@@ -182,7 +172,7 @@ async function getOrCreateSession(
         .update(userSessionsTable)
         .set({
           username: username || existing.username,
-          firstName: existing.firstName || firstName,
+          firstName: existing.firstName,
           lastName: lastName || existing.lastName,
           refCode: storedRefCode,
           partnerId,
@@ -193,13 +183,22 @@ async function getOrCreateSession(
       return updated || existing;
     }
 
-    const partnerId = await resolvePartnerId(refCode);
+    let partnerId: number | null = null;
+    if (refCode) {
+      const partner = (await tx
+        .select({ id: partnersTable.id })
+        .from(partnersTable)
+        .where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)))
+        .limit(1))[0];
+      partnerId = partner?.id || null;
+    }
+
     const [created] = await tx
       .insert(userSessionsTable)
       .values({
         telegramUserId: userId,
         username,
-        firstName,
+        firstName: null,
         lastName,
         refCode,
         partnerId,
@@ -278,7 +277,6 @@ async function sendIntro(bot: TelegramBot, chatId: number, session: BotSession):
   await updateStage(session.id, "intro");
   await sendBotText(bot, chatId, session.id, "intro", text, {
     reply_markup: {
-      ...getReplyKeyboard(),
       inline_keyboard: [[{ text: "▶️ Начать", callback_data: "v2_start" }]],
     },
   });
@@ -623,10 +621,12 @@ async function handleGlobalIntent(
     return true;
   }
 
-  if (intent === "soft_decline") {
+  if (
+    intent === "objection_price" &&
+    !["start_reaction", "price_objection", "final_interest"].includes(stage)
+  ) {
     await saveMessage(session.id, "user", text, stage, intent);
-    await updateStage(session.id, "doubt");
-    await sendBotText(bot, chatId, session.id, "doubt", await getV2Text("soft_decline"));
+    await sendBotText(bot, chatId, session.id, stage, await getV2Text("price_objection"));
     return true;
   }
 
@@ -714,7 +714,7 @@ export async function handleMessage(bot: TelegramBot, msg: Message): Promise<voi
 
   switch (stage) {
     case "intro":
-      await sendBlock(bot, chatId, session, "name_question", "name_question");
+      await sendBotText(bot, chatId, session.id, stage, "Нажми кнопку «Начать» под приветствием — до этого момента я не буду запускать сценарий.");
       return;
 
     case "name_question": {
@@ -724,7 +724,8 @@ export async function handleMessage(bot: TelegramBot, msg: Message): Promise<voi
         await db.update(userSessionsTable).set({ firstName: name, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
         await sendBlock(bot, chatId, { ...session, firstName: name }, "laundry_brand", "laundry_question_named", { name });
       } else {
-        await sendBlock(bot, chatId, session, "laundry_brand", "laundry_question_anonymous");
+        await db.update(userSessionsTable).set({ firstName: null, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
+        await sendBlock(bot, chatId, { ...session, firstName: null }, "laundry_brand", "laundry_question_anonymous");
       }
       return;
     }
@@ -1051,12 +1052,6 @@ export async function handleMessage(bot: TelegramBot, msg: Message): Promise<voi
     case "doubt":
       await sendBotText(bot, chatId, session.id, stage, await getV2Text("doubt"));
       return;
-
-    case "laundry_video_reaction":
-    case "dish_video_reaction":
-    case "pads_video_reaction":
-    case "toilet_video_reaction":
-      return;
   }
 }
 
@@ -1142,10 +1137,9 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery): Pr
         familyChildren: null,
         femaleHygieneRelevant: null,
         menuShown: false,
-        isCompleted: false,
         updatedAt: new Date(),
       })
       .where(eq(userSessionsTable.id, session.id));
-    await sendIntro(bot, chatId, { ...session, currentStage: "intro", isCompleted: false });
+    await sendIntro(bot, chatId, { ...session, currentStage: "intro" });
   }
 }
