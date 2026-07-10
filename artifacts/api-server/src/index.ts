@@ -16,12 +16,30 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Production URL takes priority, fallback to dev domain
-const appUrl = process.env.REPLIT_APP_URL || "";
-const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
-const domains = process.env.REPLIT_DOMAINS || "";
-const host = appUrl.replace(/^https?:\/\//, "") || domains.split(",")[0] || devDomain || "";
-const webhookUrl = host ? `https://${host}/api/bot/webhook` : undefined;
+function normalizePublicUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function resolvePublicAppUrl(): string {
+  const explicit = process.env.PUBLIC_APP_URL || "";
+  if (explicit) return normalizePublicUrl(explicit);
+
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN || "";
+  if (railwayDomain) return normalizePublicUrl(railwayDomain);
+
+  // Compatibility fallback for any remaining Replit environments.
+  const replitAppUrl = process.env.REPLIT_APP_URL || "";
+  if (replitAppUrl) return normalizePublicUrl(replitAppUrl);
+
+  const replitDomains = process.env.REPLIT_DOMAINS || "";
+  const replitDomain = replitDomains.split(",")[0]?.trim() || process.env.REPLIT_DEV_DOMAIN || "";
+  return normalizePublicUrl(replitDomain);
+}
+
+const publicAppUrl = resolvePublicAppUrl();
+const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
 
 app.listen(port, async (err?: Error) => {
   if (err) {
@@ -29,15 +47,6 @@ app.listen(port, async (err?: Error) => {
     process.exit(1);
   }
 
-  logger.info({ port, webhookUrl }, "Server listening");
+  logger.info({ port, publicAppUrl, webhookUrl }, "Server listening");
   await startBot(webhookUrl);
-
-  // Keep-alive ping to prevent Replit autoscale sleep
-  const keepAliveUrl = `http://localhost:${port}/api/healthz`;
-  setInterval(() => {
-    fetch(keepAliveUrl).catch(() => {
-      // Ignore errors — if server is down, it'll restart anyway
-    });
-  }, 45_000);
-  logger.info({ url: keepAliveUrl, intervalSec: 45 }, "Keep-alive ping started");
 });
