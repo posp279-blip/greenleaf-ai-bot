@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/friendly-scenario-v2
+      - test/telegram-v2
   pull_request:
     branches:
       - main
