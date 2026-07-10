@@ -2,7 +2,7 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
-    "buildCommand": "pnpm run typecheck && pnpm --filter @workspace/api-server run build"
+    "buildCommand": "python scripts/fix_railway_types.py && pnpm run typecheck && pnpm --filter @workspace/api-server run build"
   },
   "deploy": {
     "preDeployCommand": "pnpm --filter @workspace/db run push",
