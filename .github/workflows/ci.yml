@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - main
+      - feature/friendly-scenario-v2
 
 permissions:
   contents: read
