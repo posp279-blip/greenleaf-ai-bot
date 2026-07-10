@@ -136,10 +136,23 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     logger.error({ err }, "Failed to get bot info");
   }
 
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  let webhookConfigured = false;
+
   if (webhookUrl) {
     try {
-      await bot.setWebHook(webhookUrl);
-      logger.info({ webhookUrl }, "Telegram webhook set");
+      await bot.setWebHook(
+        webhookUrl,
+        webhookSecret ? { secret_token: webhookSecret } : undefined,
+      );
+      webhookConfigured = true;
+      logger.info(
+        { webhookUrl, protected: Boolean(webhookSecret) },
+        "Telegram webhook set",
+      );
+      if (!webhookSecret) {
+        logger.warn("TELEGRAM_WEBHOOK_SECRET is not set — webhook is not header-protected");
+      }
     } catch (err) {
       logger.error({ err, webhookUrl }, "Failed to set webhook — falling back to polling");
     }
@@ -148,13 +161,23 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   let webhookActive = false;
   try {
     const webhookInfo = await bot.getWebHookInfo();
-    webhookActive = Boolean(webhookInfo.url && webhookInfo.url === webhookUrl);
+    webhookActive = Boolean(
+      webhookConfigured && webhookInfo.url && webhookInfo.url === webhookUrl,
+    );
   } catch (err) {
     logger.error({ err }, "Failed to read Telegram webhook status");
   }
 
   if (!webhookActive) {
     if (webhookUrl) logger.warn("Webhook not active — falling back to polling");
+
+    try {
+      await bot.deleteWebHook({ drop_pending_updates: false });
+      logger.info("Previous Telegram webhook removed before polling");
+    } catch (err) {
+      logger.error({ err }, "Failed to remove Telegram webhook before polling");
+      throw err;
+    }
 
     bot = new TelegramBot(token, { polling: true });
     attachBotErrorHandlers(bot);
