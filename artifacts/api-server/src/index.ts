@@ -1,15 +1,11 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import app from "./app.js";
-import { logger } from "./lib/logger.js";
-import { startBot } from "./bot/index.js";
+import http, { type IncomingMessage, type ServerResponse } from "node:http";
 
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+  throw new Error("PORT environment variable is required but was not provided.");
 }
 
 const port = Number(rawPort);
@@ -31,24 +27,55 @@ function resolvePublicAppUrl(): string {
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN || "";
   if (railwayDomain) return normalizePublicUrl(railwayDomain);
 
-  // Compatibility fallback for any remaining Replit environments.
   const replitAppUrl = process.env.REPLIT_APP_URL || "";
   if (replitAppUrl) return normalizePublicUrl(replitAppUrl);
 
   const replitDomains = process.env.REPLIT_DOMAINS || "";
-  const replitDomain = replitDomains.split(",")[0]?.trim() || process.env.REPLIT_DEV_DOMAIN || "";
+  const replitDomain =
+    replitDomains.split(",")[0]?.trim() || process.env.REPLIT_DEV_DOMAIN || "";
   return normalizePublicUrl(replitDomain);
 }
+
+const publicAppUrl = resolvePublicAppUrl();
+const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
+const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+let phase = "booting";
+let applicationHandler:
+  | ((req: IncomingMessage, res: ServerResponse) => void)
+  | null = null;
+
+function writeJson(res: ServerResponse, statusCode: number, body: unknown): void {
+  const payload = JSON.stringify(body);
+  res.statusCode = statusCode;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("content-length", Buffer.byteLength(payload));
+  res.end(payload);
+}
+
+const server = http.createServer((req, res) => {
+  const pathname = (req.url || "/").split("?")[0];
+
+  if (pathname === "/api/healthz" || pathname === "/healthz" || pathname === "/") {
+    writeJson(res, 200, { status: "ok", phase });
+    return;
+  }
+
+  if (applicationHandler) {
+    applicationHandler(req, res);
+    return;
+  }
+
+  writeJson(res, 503, { error: "application is starting", phase });
+});
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function syncDatabaseSchema(): Promise<void> {
-  const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
-
   return new Promise((resolve, reject) => {
-    logger.info({ workspaceRoot }, "Starting PostgreSQL schema synchronization");
+    console.log("[startup] Synchronizing PostgreSQL schema");
 
     const child = spawn(
       "pnpm",
@@ -73,7 +100,6 @@ function syncDatabaseSchema(): Promise<void> {
     child.once("exit", (code, signal) => {
       clearTimeout(timeout);
       if (code === 0) {
-        logger.info("PostgreSQL schema synchronization completed");
         resolve();
         return;
       }
@@ -87,9 +113,6 @@ function syncDatabaseSchema(): Promise<void> {
   });
 }
 
-const publicAppUrl = resolvePublicAppUrl();
-const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
-
 async function initializeApplication(): Promise<void> {
   let attempt = 0;
 
@@ -97,32 +120,44 @@ async function initializeApplication(): Promise<void> {
     attempt += 1;
 
     try {
-      logger.info({ attempt }, "Starting application background initialization");
+      phase = "loading_application";
+      console.log(`[startup] Loading application, attempt ${attempt}`);
+
+      const [{ default: app }, { startBot }] = await Promise.all([
+        import("./app.js"),
+        import("./bot/index.js"),
+      ]);
+
+      applicationHandler = (req, res) => app(req, res);
+      phase = "synchronizing_database";
       await syncDatabaseSchema();
+
+      phase = "starting_bot";
       await startBot(webhookUrl);
-      logger.info({ attempt }, "Application background initialization completed");
+
+      phase = "ready";
+      console.log("[startup] Application initialization completed");
       return;
-    } catch (err) {
+    } catch (error) {
       const retryDelayMs = Math.min(60_000, 5_000 * attempt);
-      logger.error(
-        { err, attempt, retryDelayMs },
-        "Application initialization failed; HTTP healthcheck remains available and initialization will retry",
+      phase = "initialization_retry";
+      console.error(
+        `[startup] Initialization attempt ${attempt} failed; retrying in ${retryDelayMs} ms`,
+        error,
       );
       await sleep(retryDelayMs);
     }
   }
 }
 
-const server = app.listen(port, "0.0.0.0", () => {
-  logger.info(
-    { port, host: "0.0.0.0", publicAppUrl, webhookUrl },
-    "Server listening",
+server.listen(port, "0.0.0.0", () => {
+  console.log(
+    `[startup] Health server listening on 0.0.0.0:${port}; publicAppUrl=${publicAppUrl || "(none)"}`,
   );
-
   void initializeApplication();
 });
 
-server.on("error", (err) => {
-  logger.error({ err }, "Error listening on port");
+server.on("error", (error) => {
+  console.error("[startup] HTTP server error", error);
   process.exit(1);
 });
