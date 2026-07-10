@@ -20,6 +20,5 @@ path = "scripts/post-merge.sh"
 timeoutMs = 20000
 
 [userenv]
-
-[userenv.shared]
-REPLIT_APP_URL = "https://greenleaf-ai-bot.replit.app"
+# Test branch intentionally does not pin REPLIT_APP_URL.
+# Replit must use the domain generated for the separate test application.
