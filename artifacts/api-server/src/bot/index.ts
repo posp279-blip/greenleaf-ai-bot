@@ -1,8 +1,9 @@
 import TelegramBot from "node-telegram-bot-api";
 import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
-import { handleMessage, handleCallback, handleAdminCallback } from "./engine.js";
+import { handleMessage, handleCallback, handleAdminCallback } from "./engine-v2.js";
 import { seedDatabase } from "./seed.js";
+import { seedV2Content } from "./content-store-v2.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
@@ -113,6 +114,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   }
 
   await seedDatabase();
+  await seedV2Content();
   installShutdownHandlers();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
