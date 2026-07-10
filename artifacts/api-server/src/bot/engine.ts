@@ -11,7 +11,7 @@ import {
   adminStateTable,
   calculatorItemsTable,
 } from "@workspace/db";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { classifyText, detectBrandName } from "./classifier.js";
 import { classifyUserInput, generateReaction, answerQuestion, isAiAvailable } from "./ai.js";
@@ -95,35 +95,47 @@ async function getOrCreateSession(
   firstName: string | undefined, lastName: string | undefined,
   refCode?: string
 ): Promise<BotSession> {
-  const existing = await db.select().from(userSessionsTable)
-    .where(eq(userSessionsTable.telegramUserId, userId));
+  return db.transaction(async (tx) => {
+    // Serialize session creation for the same Telegram user across all app instances.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId}::bigint)`);
 
-  if (existing[0]) {
-    await db.update(userSessionsTable)
-      .set({ username: username || existing[0].username, firstName: firstName || existing[0].firstName, updatedAt: new Date() })
-      .where(eq(userSessionsTable.id, existing[0].id));
-    // Re-read to get the latest partnerId/refCode if they were updated externally
-    const fresh = await db.select().from(userSessionsTable).where(eq(userSessionsTable.id, existing[0].id));
-    return fresh[0] || existing[0];
-  }
+    const existing = await tx.select().from(userSessionsTable)
+      .where(eq(userSessionsTable.telegramUserId, userId));
 
-  let partnerId: number | null = null;
-  if (refCode) {
-    const partners = await db.select().from(partnersTable)
-      .where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)));
-    if (partners[0]) partnerId = partners[0].id;
-  }
+    if (existing[0]) {
+      await tx.update(userSessionsTable)
+        .set({
+          username: username || existing[0].username,
+          firstName: firstName || existing[0].firstName,
+          lastName: lastName || existing[0].lastName,
+          updatedAt: new Date(),
+        })
+        .where(eq(userSessionsTable.id, existing[0].id));
+      const fresh = await tx.select().from(userSessionsTable)
+        .where(eq(userSessionsTable.id, existing[0].id));
+      return fresh[0] || existing[0];
+    }
 
-  const [session] = await db.insert(userSessionsTable).values({
-    telegramUserId: userId,
-    username,
-    firstName,
-    lastName,
-    refCode,
-    partnerId,
-    currentStage: "intro",
-  }).returning();
-  return session;
+    let partnerId: number | null = null;
+    if (refCode) {
+      const partners = await tx.select().from(partnersTable)
+        .where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)));
+      if (partners[0]) partnerId = partners[0].id;
+    }
+
+    const [session] = await tx.insert(userSessionsTable).values({
+      telegramUserId: userId,
+      username,
+      firstName,
+      lastName,
+      refCode,
+      partnerId,
+      currentStage: "intro",
+    }).returning();
+
+    if (!session) throw new Error("Failed to create Telegram user session");
+    return session;
+  });
 }
 
 async function updateStage(sessionId: number, stage: string) {
@@ -261,6 +273,16 @@ async function handleFinalQuestion(bot: TelegramBot, chatId: number, session: Bo
 }
 
 async function handleLeadCapture(bot: TelegramBot, chatId: number, session: BotSession) {
+  if (session.isCompleted || session.leadId) {
+    await bot.sendMessage(chatId, "Заявка уже создана. Её статус можно посмотреть через пункт «Моя заявка».");
+    return;
+  }
+
+  if (session.currentStage.startsWith("lead_capture_")) {
+    await bot.sendMessage(chatId, "Заявка уже заполняется. Ответь на последний вопрос бота, чтобы продолжить.");
+    return;
+  }
+
   await updateStage(session.id, "lead_capture_name");
   await bot.sendMessage(chatId, TEXTS.leadCaptureName, { parse_mode: "Markdown" });
   await saveMessage(session.id, "bot", TEXTS.leadCaptureName, "lead_capture_name");
@@ -345,6 +367,24 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
   const stage = session.currentStage;
   const quickIntent = classifyText(text);
 
+  if (stage.startsWith("question_mode_")) {
+    const returnStage = stage.slice("question_mode_".length) || "intro";
+    await saveMessage(session.id, "user", text, returnStage, "question");
+
+    let aiAnswer: string | null = null;
+    try {
+      aiAnswer = await answerQuestion(text, returnStage, session.id);
+    } catch (err) {
+      logger.error({ err, sessionId: session.id }, "Question mode AI answer failed");
+    }
+
+    await updateStage(session.id, returnStage);
+    const response = aiAnswer || "Не смог сейчас сформулировать ответ через ИИ. Мы сохранили твой этап — можно продолжить с того места, где остановились.";
+    await bot.sendMessage(chatId, response);
+    await saveMessage(session.id, "bot", response, returnStage, "question_answer");
+    return;
+  }
+
   // Global objection handlers
   if (quickIntent === "objection_pyramid") {
     await saveMessage(session.id, "user", text, stage, quickIntent);
@@ -364,6 +404,17 @@ export async function handleMessage(bot: TelegramBot, msg: Message) {
 
   // Stage-specific text handling
   switch (stage) {
+    case "quick_savings": {
+      await saveMessage(session.id, "user", text, stage, quickIntent);
+      if (quickIntent === "negative" || quickIntent === "soft_decline") {
+        await bot.sendMessage(chatId, "Понял. Расчёт можно открыть позже через меню. Продолжим, когда будет удобно.");
+        break;
+      }
+      await updateStage(session.id, "laundry_question");
+      await bot.sendMessage(chatId, TEXTS.laundryQuestion, { parse_mode: "Markdown" });
+      await saveMessage(session.id, "bot", TEXTS.laundryQuestion, "laundry_question");
+      break;
+    }
     case "name_question": {
       await saveMessage(session.id, "user", text, stage);
       const name = text.trim().split(/\s+/)[0];
@@ -891,9 +942,13 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
 
   if (data === "menu_question") {
-    const prevStage = session.currentStage;
-    await db.update(userSessionsTable).set({ currentStage: `question_mode_${prevStage}`, updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
-    await bot.sendMessage(chatId, "Задай свой вопрос — я отвечу и вернёмся к разбору.");
+    const prevStage = session.currentStage.startsWith("question_mode_")
+      ? session.currentStage.slice("question_mode_".length)
+      : session.currentStage;
+    await db.update(userSessionsTable)
+      .set({ currentStage: `question_mode_${prevStage}`, updatedAt: new Date() })
+      .where(eq(userSessionsTable.id, session.id));
+    await bot.sendMessage(chatId, "Задай свой вопрос — я отвечу и верну тебя к текущему этапу.");
     return;
   }
 
@@ -1083,7 +1138,9 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
   }
 
   if (data === "depth_savings") {
-    await db.update(userSessionsTable).set({ depthMode: "savings", updatedAt: new Date() }).where(eq(userSessionsTable.id, session.id));
+    await db.update(userSessionsTable)
+      .set({ depthMode: "savings", currentStage: "quick_savings", updatedAt: new Date() })
+      .where(eq(userSessionsTable.id, session.id));
     await bot.sendMessage(chatId, TEXTS.quickSavingsIntro, { parse_mode: "Markdown" });
     return;
   }
