@@ -7,6 +7,7 @@ import {
   timestamp,
   bigint,
   jsonb,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -24,7 +25,10 @@ export const partnersTable = pgTable("partners", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("partners_telegram_user_id_idx").on(table.telegramUserId),
+  index("partners_sponsor_partner_id_idx").on(table.sponsorPartnerId),
+]);
 
 export const insertPartnerSchema = createInsertSchema(partnersTable).omit({
   id: true,
@@ -54,7 +58,11 @@ export const userSessionsTable = pgTable("user_sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
-});
+}, (table) => [
+  index("user_sessions_telegram_user_id_idx").on(table.telegramUserId),
+  index("user_sessions_partner_id_idx").on(table.partnerId),
+  index("user_sessions_current_stage_idx").on(table.currentStage),
+]);
 
 export const insertUserSessionSchema = createInsertSchema(
   userSessionsTable,
@@ -72,7 +80,10 @@ export const messagesTable = pgTable("messages", {
   intent: text("intent"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("messages_session_id_idx").on(table.sessionId),
+  index("messages_created_at_idx").on(table.createdAt),
+]);
 
 export const insertMessageSchema = createInsertSchema(messagesTable).omit({
   id: true,
@@ -93,7 +104,12 @@ export const leadsTable = pgTable("leads", {
   convertedPartnerId: integer("converted_partner_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("leads_session_id_idx").on(table.sessionId),
+  index("leads_partner_id_idx").on(table.partnerId),
+  index("leads_status_idx").on(table.status),
+  index("leads_created_at_idx").on(table.createdAt),
+]);
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({
   id: true,
@@ -208,7 +224,10 @@ export const aiLogsTable = pgTable("ai_logs", {
   success: boolean("success").notNull().default(false),
   error: text("error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("ai_logs_session_id_idx").on(table.sessionId),
+  index("ai_logs_created_at_idx").on(table.createdAt),
+]);
 
 export const insertAiLogSchema = createInsertSchema(aiLogsTable).omit({
   id: true,
