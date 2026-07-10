@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import app from "./app.js";
 import { logger } from "./lib/logger.js";
 import { startBot } from "./bot/index.js";
@@ -38,15 +40,65 @@ function resolvePublicAppUrl(): string {
   return normalizePublicUrl(replitDomain);
 }
 
+function syncDatabaseSchema(): Promise<void> {
+  const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+  return new Promise((resolve, reject) => {
+    logger.info({ workspaceRoot }, "Starting PostgreSQL schema synchronization");
+
+    const child = spawn(
+      "pnpm",
+      ["--dir", workspaceRoot, "--filter", "@workspace/db", "run", "push-force"],
+      {
+        cwd: workspaceRoot,
+        env: process.env,
+        stdio: "inherit",
+      },
+    );
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("PostgreSQL schema synchronization timed out after 120 seconds"));
+    }, 120_000);
+
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        logger.info("PostgreSQL schema synchronization completed");
+        resolve();
+        return;
+      }
+
+      reject(
+        new Error(
+          `PostgreSQL schema synchronization exited with code ${code ?? "null"}${signal ? ` (${signal})` : ""}`,
+        ),
+      );
+    });
+  });
+}
+
 const publicAppUrl = resolvePublicAppUrl();
 const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
 
-app.listen(port, async (err?: Error) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
+const server = app.listen(port, () => {
   logger.info({ port, publicAppUrl, webhookUrl }, "Server listening");
-  await startBot(webhookUrl);
+
+  void (async () => {
+    await syncDatabaseSchema();
+    await startBot(webhookUrl);
+  })().catch((err) => {
+    logger.error({ err }, "Application initialization failed after HTTP server startup");
+    server.close(() => process.exit(1));
+  });
+});
+
+server.on("error", (err) => {
+  logger.error({ err }, "Error listening on port");
+  process.exit(1);
 });
