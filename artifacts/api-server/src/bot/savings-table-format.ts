@@ -104,6 +104,16 @@ function formatSavingsTable(text: string): string | null {
   ].join("\n");
 }
 
+function formatPartnerOnboarding(text: string): string | null {
+  const outdatedInstruction = 'Открой меню бота и нажми "📞 Партнёрам" — там всё для работы с ссылкой.';
+  if (!text.includes(outdatedInstruction)) return null;
+
+  return text.replace(
+    outdatedInstruction,
+    'Нажми кнопку «📤 Как отправить» ниже — там готовый текст для отправки и твоя партнёрская ссылка.',
+  );
+}
+
 export function attachSavingsTableFormatter(instance: TelegramBot): void {
   if (formattedBots.has(instance)) return;
   formattedBots.add(instance);
@@ -115,13 +125,29 @@ export function attachSavingsTableFormatter(instance: TelegramBot): void {
     text: Parameters<TelegramBot["sendMessage"]>[1],
     options?: Parameters<TelegramBot["sendMessage"]>[2],
   ) => {
-    const formatted = formatSavingsTable(text);
-    if (!formatted) return originalSendMessage(chatId, text, options);
+    const formattedTable = formatSavingsTable(text);
+    if (formattedTable) {
+      return originalSendMessage(chatId, formattedTable, {
+        ...options,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      });
+    }
 
-    return originalSendMessage(chatId, formatted, {
-      ...options,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    });
+    const partnerOnboarding = formatPartnerOnboarding(text);
+    if (partnerOnboarding) {
+      return originalSendMessage(chatId, partnerOnboarding, {
+        ...options,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📤 Как отправить", callback_data: "partner_how" }],
+            [{ text: "🔗 Моя ссылка", callback_data: "partner_link" }],
+          ],
+        },
+        disable_web_page_preview: true,
+      });
+    }
+
+    return originalSendMessage(chatId, text, options);
   }) as TelegramBot["sendMessage"];
 }
