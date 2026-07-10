@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import { handleMessage, handleCallback, handleAdminCallback } from "./engine-v2.js";
 import { seedDatabase } from "./seed.js";
 import { seedV2Content } from "./content-store-v2.js";
+import { attachSavingsTableFormatter } from "./savings-table-format.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
@@ -118,6 +119,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   installShutdownHandlers();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
+  attachSavingsTableFormatter(bot);
   attachBotErrorHandlers(bot);
 
   try {
@@ -180,6 +182,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     }
 
     bot = new TelegramBot(token, { polling: true });
+    attachSavingsTableFormatter(bot);
     attachBotErrorHandlers(bot);
 
     bot.on("message", async (msg) => {
