@@ -1,0 +1,41 @@
+name: Apply critical engine fixes
+
+on:
+  push:
+    branches:
+      - feature/friendly-scenario-v2
+    paths:
+      - scripts/apply_critical_engine_fixes.py
+      - .github/workflows/apply-critical-engine-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/friendly-scenario-v2
+
+      - name: Apply verified replacements
+        run: python scripts/apply_critical_engine_fixes.py
+
+      - name: Validate patch formatting
+        run: git diff --check
+
+      - name: Commit patched engine
+        run: |
+          if git diff --quiet; then
+            echo "No engine changes were produced"
+            exit 1
+          fi
+          git config user.name "greenleaf-bot-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add artifacts/api-server/src/bot/engine.ts
+          git commit -m "Fix critical bot state and session bugs"
+          git push origin HEAD:feature/friendly-scenario-v2
