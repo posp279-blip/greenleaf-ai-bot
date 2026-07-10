@@ -29,6 +29,25 @@ async function getSetting(key: string): Promise<string> {
   return rows[0]?.value ?? "";
 }
 
+async function getLiveBotUsername(bot: TelegramBot): Promise<string> {
+  try {
+    const me = await bot.getMe();
+    if (me.username) {
+      await db
+        .insert(appSettingsTable)
+        .values({ key: "bot_username", value: me.username })
+        .onConflictDoUpdate({
+          target: appSettingsTable.key,
+          set: { value: me.username, updatedAt: new Date() },
+        });
+      return me.username;
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch live bot username, falling back to stored setting");
+  }
+  return getSetting("bot_username");
+}
+
 async function getAdminIds(): Promise<number[]> {
   const raw = await getSetting("admin_telegram_ids");
   const envRaw = process.env.ADMIN_TELEGRAM_IDS;
@@ -1048,13 +1067,13 @@ export async function handleCallback(bot: TelegramBot, query: CallbackQuery) {
     await db.update(leadsTable).set({ convertedPartnerId: newPartner.id, partnerId: newPartner.id, status: "зарегистрирован", updatedAt: new Date() }).where(eq(leadsTable.id, leadId));
 
     // Notify the new partner
-    const botUsername = await getSetting("bot_username");
+    const botUsername = await getLiveBotUsername(bot);
     if (botUsername && sessionRow?.telegramUserId) {
       const link = `https://t.me/${botUsername}?start=${newPartner.refCode}`;
       try {
         await bot.sendMessage(
           sessionRow.telegramUserId,
-          `🎉 Поздравляем\! Ты теперь партнёр Greenleaf\!\n\nТвоя реферальная ссылка:\n${escapeMarkdown(link)}\n\nОткрой меню бота и нажми "📞 Партнёрам" — там всё для работы с ссылкой\.`,
+          `🎉 Поздравляем\! Ты теперь партнёр Greenleaf\!\n\nТвоя реферальная ссылка:\n${escapeMarkdown(link)}\n\nОткрой меню бота и нажми "📤 Как отправить" — там готовый текст для отправки\.`,
           { reply_markup: getReplyKeyboard() }
         );
       } catch (err) {

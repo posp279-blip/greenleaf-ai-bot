@@ -960,11 +960,26 @@ export async function handleMessage(bot: TelegramBot, msg: Message): Promise<voi
 
     case "company_permission": {
       await saveMessage(session.id, "user", text, stage, intent);
+      if (isNegative(intent, text)) {
+        const company = await getV2Text("company_block");
+        await updateStage(session.id, "purchase_interest");
+        await sendBotText(bot, chatId, session.id, "purchase_interest", company);
+        return;
+      }
+      const video = await composeVideoMessage(
+        "company_video",
+        "Посмотрел? Напиши в двух словах, что думаешь, или просто «дальше».",
+      );
+      await updateStage(session.id, "company_video_reaction");
+      await sendBotText(bot, chatId, session.id, "company_video_reaction", video);
+      return;
+    }
+
+    case "company_video_reaction": {
+      await saveMessage(session.id, "user", text, stage, intent);
       const company = await getV2Text("company_block");
-      const url = isNegative(intent, text) ? null : await getVideoUrl("company_video");
-      const prefix = url ? `🎬 ${url}\n\n` : "";
       await updateStage(session.id, "purchase_interest");
-      await sendBotText(bot, chatId, session.id, "purchase_interest", `${prefix}${company}`);
+      await sendBotText(bot, chatId, session.id, "purchase_interest", company);
       return;
     }
 
