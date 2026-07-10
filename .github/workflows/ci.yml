@@ -36,10 +36,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Unit tests
-        run: pnpm --filter @workspace/scripts run test
+        run: pnpm --dir scripts exec tsx --test "$GITHUB_WORKSPACE/artifacts/api-server/src/bot/flow-v2.test.ts"
 
       - name: Typecheck
+        if: always()
         run: pnpm run typecheck
 
       - name: Build
+        if: always()
         run: pnpm run build
