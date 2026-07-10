@@ -51,24 +51,29 @@ export function parseFamilyProfile(text: string): FamilyProfile {
 
   const adultsMatch = lower.match(/(\d+)\s*(?:взросл|человек)/);
   const childrenMatch = lower.match(/(\d+)\s*(?:реб[её]н|дет)/);
+  const adultsValue = adultsMatch?.[1];
+  const childrenValue = childrenMatch?.[1];
 
-  if (adultsMatch) adults = Number.parseInt(adultsMatch[1], 10);
-  if (childrenMatch) children = Number.parseInt(childrenMatch[1], 10);
+  if (adultsValue) adults = Number.parseInt(adultsValue, 10);
+  if (childrenValue) children = Number.parseInt(childrenValue, 10);
 
-  const allNumbers = [...lower.matchAll(/\d+/g)].map((match) => Number.parseInt(match[0], 10));
-  if (adults === 0 && children === 0 && allNumbers.length > 0) adults = allNumbers[0];
+  const allNumbers = [...lower.matchAll(/\d+/g)]
+    .map((match) => match[0])
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Number.parseInt(value, 10));
+  const firstNumber = allNumbers[0];
+  if (adults === 0 && children === 0 && firstNumber !== undefined) adults = firstNumber;
   if (adults === 0) adults = 1;
 
   adults = Math.min(Math.max(adults, 1), 10);
   children = Math.min(Math.max(children, 0), 10);
 
   const explicitNoFemale = /нет\s+(?:женщин|девуш|женской)|без\s+(?:женщин|девуш)/.test(lower);
-  const explicitFemale = /есть\s+(?:женщин|девуш)|жена|девушка|дочь|мама|сестра|женская\s+гигиена\s+(?:да|актуальна)/.test(lower);
 
   return {
     adults,
     children,
-    femaleHygieneRelevant: explicitFemale && !explicitNoFemale,
+    femaleHygieneRelevant: !explicitNoFemale,
   };
 }
 
