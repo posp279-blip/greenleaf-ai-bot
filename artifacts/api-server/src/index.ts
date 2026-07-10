@@ -36,11 +36,25 @@ function resolvePublicAppUrl(): string {
   return normalizePublicUrl(replitDomain);
 }
 
+function sanitizeDiagnostic(value: unknown): string {
+  const raw = value instanceof Error ? value.message : String(value);
+  return raw
+    .replace(/postgres(?:ql)?:\/\/[^@\s]+@/gi, "postgresql://***@")
+    .replace(/https:\/\/api\.telegram\.org\/bot[^/\s]+/gi, "https://api.telegram.org/bot***")
+    .replace(/\b\d{6,}:[A-Za-z0-9_-]{20,}\b/g, "***")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 800);
+}
+
 const publicAppUrl = resolvePublicAppUrl();
 const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
 const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 let phase = "booting";
+let initializationAttempt = 0;
+let lastInitializationError: string | null = null;
+let nextRetryInMs: number | null = null;
 let applicationHandler:
   | ((req: IncomingMessage, res: ServerResponse) => void)
   | null = null;
@@ -57,7 +71,13 @@ const server = http.createServer((req, res) => {
   const pathname = (req.url || "/").split("?")[0];
 
   if (pathname === "/api/healthz" || pathname === "/healthz" || pathname === "/") {
-    writeJson(res, 200, { status: "ok", phase });
+    writeJson(res, 200, {
+      status: "ok",
+      phase,
+      attempt: initializationAttempt,
+      lastError: lastInitializationError,
+      nextRetryInMs,
+    });
     return;
   }
 
@@ -83,13 +103,33 @@ function syncDatabaseSchema(): Promise<void> {
       {
         cwd: workspaceRoot,
         env: process.env,
-        stdio: "inherit",
+        stdio: ["ignore", "pipe", "pipe"],
       },
     );
 
+    let diagnosticOutput = "";
+    const appendDiagnostic = (chunk: Buffer): void => {
+      const text = chunk.toString("utf8");
+      diagnosticOutput = `${diagnosticOutput}${text}`.slice(-6000);
+    };
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      process.stdout.write(chunk);
+      appendDiagnostic(chunk);
+    });
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      appendDiagnostic(chunk);
+    });
+
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error("PostgreSQL schema synchronization timed out after 120 seconds"));
+      reject(
+        new Error(
+          `PostgreSQL schema synchronization timed out after 120 seconds. ${sanitizeDiagnostic(diagnosticOutput)}`,
+        ),
+      );
     }, 120_000);
 
     child.once("error", (error) => {
@@ -104,9 +144,10 @@ function syncDatabaseSchema(): Promise<void> {
         return;
       }
 
+      const details = sanitizeDiagnostic(diagnosticOutput);
       reject(
         new Error(
-          `PostgreSQL schema synchronization exited with code ${code ?? "null"}${signal ? ` (${signal})` : ""}`,
+          `PostgreSQL schema synchronization exited with code ${code ?? "null"}${signal ? ` (${signal})` : ""}${details ? `: ${details}` : ""}`,
         ),
       );
     });
@@ -114,14 +155,14 @@ function syncDatabaseSchema(): Promise<void> {
 }
 
 async function initializeApplication(): Promise<void> {
-  let attempt = 0;
-
   for (;;) {
-    attempt += 1;
+    initializationAttempt += 1;
+    nextRetryInMs = null;
+    lastInitializationError = null;
 
     try {
       phase = "loading_application";
-      console.log(`[startup] Loading application, attempt ${attempt}`);
+      console.log(`[startup] Loading application, attempt ${initializationAttempt}`);
 
       const [{ default: app }, { startBot }] = await Promise.all([
         import("./app.js"),
@@ -136,13 +177,17 @@ async function initializeApplication(): Promise<void> {
       await startBot(webhookUrl);
 
       phase = "ready";
+      lastInitializationError = null;
+      nextRetryInMs = null;
       console.log("[startup] Application initialization completed");
       return;
     } catch (error) {
-      const retryDelayMs = Math.min(60_000, 5_000 * attempt);
+      const retryDelayMs = Math.min(60_000, 5_000 * initializationAttempt);
       phase = "initialization_retry";
+      lastInitializationError = sanitizeDiagnostic(error);
+      nextRetryInMs = retryDelayMs;
       console.error(
-        `[startup] Initialization attempt ${attempt} failed; retrying in ${retryDelayMs} ms`,
+        `[startup] Initialization attempt ${initializationAttempt} failed; retrying in ${retryDelayMs} ms`,
         error,
       );
       await sleep(retryDelayMs);
