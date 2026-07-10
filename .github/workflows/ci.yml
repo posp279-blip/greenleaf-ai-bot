@@ -35,13 +35,41 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare diagnostics
+        run: mkdir -p ci-logs
+
       - name: Unit tests
-        run: pnpm --dir scripts exec tsx --test "$GITHUB_WORKSPACE/artifacts/api-server/src/bot/flow-v2.test.ts"
+        id: tests
+        continue-on-error: true
+        run: pnpm --dir scripts exec tsx --test "$GITHUB_WORKSPACE/artifacts/api-server/src/bot/flow-v2.test.ts" 2>&1 | tee ci-logs/tests.log
 
       - name: Typecheck
-        if: always()
-        run: pnpm run typecheck
+        id: typecheck
+        continue-on-error: true
+        run: pnpm run typecheck 2>&1 | tee ci-logs/typecheck.log
 
       - name: Build
+        id: build
+        continue-on-error: true
+        run: pnpm run build 2>&1 | tee ci-logs/build.log
+
+      - name: Upload diagnostics
         if: always()
-        run: pnpm run build
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenleaf-ci-logs
+          path: ci-logs
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce validation result
+        if: always()
+        env:
+          TESTS: ${{ steps.tests.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          echo "tests=$TESTS typecheck=$TYPECHECK build=$BUILD"
+          test "$TESTS" = success
+          test "$TYPECHECK" = success
+          test "$BUILD" = success
