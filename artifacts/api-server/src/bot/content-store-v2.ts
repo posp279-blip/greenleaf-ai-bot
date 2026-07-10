@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import {
   DEFAULT_V2_BLOCKS,
+  type V2Block,
   type V2ContentKey,
   renderV2Text,
 } from "./content-v2.js";
@@ -12,15 +13,18 @@ const CACHE_TTL_MS = 60_000;
 const cache = new Map<V2ContentKey, { text: string; expiresAt: number }>();
 
 export async function seedV2Content(): Promise<void> {
-  const rows = Object.entries(DEFAULT_V2_BLOCKS).map(([key, block], index) => ({
-    key: `v2_${key}`,
-    stage: block.stage,
-    title: block.title,
-    shortText: block.text,
-    detailedText: null,
-    order: block.order ?? index + 1,
-    isActive: true,
-  }));
+  const rows = Object.entries(DEFAULT_V2_BLOCKS).map(([key, rawBlock], index) => {
+    const block: V2Block = rawBlock;
+    return {
+      key: `v2_${key}`,
+      stage: block.stage,
+      title: block.title,
+      shortText: block.text,
+      detailedText: null,
+      order: block.order ?? index + 1,
+      isActive: true,
+    };
+  });
 
   if (rows.length === 0) return;
 
