@@ -164,8 +164,10 @@ async function getOrCreateSession(
           .from(partnersTable)
           .where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)))
           .limit(1))[0];
-        partnerId = partner?.id || null;
-        storedRefCode = refCode;
+        if (partner) {
+          partnerId = partner.id;
+          storedRefCode = refCode;
+        }
       }
 
       const [updated] = await tx
@@ -184,13 +186,17 @@ async function getOrCreateSession(
     }
 
     let partnerId: number | null = null;
+    let acceptedRefCode: string | undefined;
     if (refCode) {
       const partner = (await tx
         .select({ id: partnersTable.id })
         .from(partnersTable)
         .where(and(eq(partnersTable.refCode, refCode), eq(partnersTable.isActive, true)))
         .limit(1))[0];
-      partnerId = partner?.id || null;
+      if (partner) {
+        partnerId = partner.id;
+        acceptedRefCode = refCode;
+      }
     }
 
     const [created] = await tx
@@ -200,7 +206,7 @@ async function getOrCreateSession(
         username,
         firstName: null,
         lastName,
-        refCode,
+        refCode: acceptedRefCode,
         partnerId,
         currentStage: "intro",
       })
@@ -506,6 +512,7 @@ function topicForStage(stage: V2Stage): string {
 
 async function sendCurrentPrompt(bot: TelegramBot, chatId: number, session: BotSession): Promise<void> {
   const stage = normalizeStoredStage(session.currentStage);
+  if (stage !== session.currentStage) await updateStage(session.id, stage);
   if (stage === "intro") {
     await sendIntro(bot, chatId, session);
     return;
@@ -564,8 +571,11 @@ async function showMainMenu(bot: TelegramBot, chatId: number, session: BotSessio
   const partner = await getActivePartner(userId, session);
   const rows: InlineKeyboardButton[][] = [];
 
-  if (session.isCompleted) rows.push([{ text: "📊 Расчёт экономии", callback_data: "menu_calc" }]);
-  else rows.push([{ text: "▶️ Продолжить", callback_data: "menu_continue" }]);
+  if (normalizeStoredStage(session.currentStage) === "completed") {
+    rows.push([{ text: "📊 Расчёт экономии", callback_data: "menu_calc" }]);
+  } else {
+    rows.push([{ text: "▶️ Продолжить", callback_data: "menu_continue" }]);
+  }
 
   rows.push([
     { text: "📋 Моя заявка", callback_data: "menu_my_lead" },
@@ -627,6 +637,16 @@ async function handleGlobalIntent(
   ) {
     await saveMessage(session.id, "user", text, stage, intent);
     await sendBotText(bot, chatId, session.id, stage, await getV2Text("price_objection"));
+    return true;
+  }
+
+  if (
+    /не интересно|отстань/i.test(text) ||
+    (["laundry_brand", "dish_brand", "toilet_brand"].includes(stage) && /^не хочу/i.test(text.trim()))
+  ) {
+    await saveMessage(session.id, "user", text, stage, "soft_decline");
+    await updateStage(session.id, "doubt");
+    await sendBotText(bot, chatId, session.id, "doubt", await getV2Text("soft_decline"));
     return true;
   }
 

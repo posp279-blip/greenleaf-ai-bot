@@ -1514,7 +1514,18 @@ export async function handleAdminCallback(bot: TelegramBot, query: CallbackQuery
   const userId = query.from.id;
   if (!chatId) return;
   const data = query.data || "";
-  await bot.answerCallbackQuery(query.id);
+
+  try {
+    await bot.answerCallbackQuery(query.id);
+  } catch (err) {
+    logger.warn({ err, callbackId: query.id }, "Failed to answer admin callback query");
+  }
+
+  if (!(await isAdmin(userId))) {
+    logger.warn({ userId, data }, "Unauthorized Telegram admin callback blocked");
+    await bot.sendMessage(chatId, "Доступ к админке запрещён.");
+    return;
+  }
 
   if (data === "admin_leads") {
     const leads = await db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)).limit(10);
