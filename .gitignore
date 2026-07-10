@@ -47,3 +47,23 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Secrets and environment
+.env
+.env.*
+.env.local
+
+# Logs and runtime data
+*.log
+/tmp/
+
+# Agent memory
+.agents/
+
+# DB dumps
+*.dump
+*.sql
+drizzle/*.sql
+
+# Build artifacts
+*.mjs.map
