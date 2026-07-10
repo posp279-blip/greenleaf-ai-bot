@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 
+process.env.TZ = process.env.TZ?.trim() || "Europe/Moscow";
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
