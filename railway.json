@@ -5,7 +5,7 @@
     "buildCommand": "pnpm --filter @workspace/api-server run build"
   },
   "deploy": {
-    "startCommand": "node lib/db/railway-start.mjs",
+    "startCommand": "pnpm --filter @workspace/api-server run start",
     "healthcheckPath": "/api/healthz",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
