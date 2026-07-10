@@ -40,6 +40,10 @@ function resolvePublicAppUrl(): string {
   return normalizePublicUrl(replitDomain);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function syncDatabaseSchema(): Promise<void> {
   const workspaceRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -86,16 +90,36 @@ function syncDatabaseSchema(): Promise<void> {
 const publicAppUrl = resolvePublicAppUrl();
 const webhookUrl = publicAppUrl ? `${publicAppUrl}/api/bot/webhook` : undefined;
 
-const server = app.listen(port, () => {
-  logger.info({ port, publicAppUrl, webhookUrl }, "Server listening");
+async function initializeApplication(): Promise<void> {
+  let attempt = 0;
 
-  void (async () => {
-    await syncDatabaseSchema();
-    await startBot(webhookUrl);
-  })().catch((err) => {
-    logger.error({ err }, "Application initialization failed after HTTP server startup");
-    server.close(() => process.exit(1));
-  });
+  for (;;) {
+    attempt += 1;
+
+    try {
+      logger.info({ attempt }, "Starting application background initialization");
+      await syncDatabaseSchema();
+      await startBot(webhookUrl);
+      logger.info({ attempt }, "Application background initialization completed");
+      return;
+    } catch (err) {
+      const retryDelayMs = Math.min(60_000, 5_000 * attempt);
+      logger.error(
+        { err, attempt, retryDelayMs },
+        "Application initialization failed; HTTP healthcheck remains available and initialization will retry",
+      );
+      await sleep(retryDelayMs);
+    }
+  }
+}
+
+const server = app.listen(port, "0.0.0.0", () => {
+  logger.info(
+    { port, host: "0.0.0.0", publicAppUrl, webhookUrl },
+    "Server listening",
+  );
+
+  void initializeApplication();
 });
 
 server.on("error", (err) => {
