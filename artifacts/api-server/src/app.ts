@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -8,6 +10,12 @@ import { logger } from "./lib/logger.js";
 import { handleWebhookUpdate } from "./bot/index.js";
 
 const app: Express = express();
+const adminAssetsDirectory = fileURLToPath(
+  new URL("../../admin/dist/public/", import.meta.url),
+);
+const adminIndexFile = fileURLToPath(
+  new URL("../../admin/dist/public/index.html", import.meta.url),
+);
 
 app.use(
   pinoHttp({
@@ -62,5 +70,29 @@ app.post("/api/bot/webhook", async (req: Request, res: Response) => {
 });
 
 app.use("/api", router);
+
+app.use(
+  "/admin",
+  express.static(adminAssetsDirectory, {
+    index: false,
+    fallthrough: true,
+  }),
+);
+
+// SPA fallback: React Router/Wouter routes under /admin all use the same index.html.
+app.use("/admin", (req, res, next) => {
+  if (req.method !== "GET") {
+    next();
+    return;
+  }
+
+  if (!existsSync(adminIndexFile)) {
+    logger.error({ adminIndexFile }, "Admin panel build is missing");
+    res.status(503).send("Admin panel is not built yet");
+    return;
+  }
+
+  res.sendFile(adminIndexFile);
+});
 
 export default app;
