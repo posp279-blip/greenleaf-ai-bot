@@ -67,6 +67,9 @@ catalog:
   zod: ^3.25.76
 
 autoInstallPeers: false
+dedupePeers: false
+injectWorkspacePackages: false
+peersSuffixMaxLength: 1000
 
 onlyBuiltDependencies:
   - '@swc/core'
@@ -136,7 +139,6 @@ overrides:
   "rollup>@rollup/rollup-linux-ppc64-gnu": "-"
   "rollup>@rollup/rollup-linux-ppc64-musl": "-"
   "rollup>@rollup/rollup-linux-riscv64-gnu": "-"
-  "rollup>@rollup/rollup-linux-riscv64-musl": "-"
   "rollup>@rollup/rollup-linux-s390x-gnu": "-"
   "rollup>@rollup/rollup-linux-x64-musl": "-"
   "rollup>@rollup/rollup-openbsd-x64": "-"
