@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { Router, type CookieOptions } from "express";
+import { Router, type CookieOptions, type Request } from "express";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -17,15 +17,15 @@ const cookieOptions: CookieOptions = {
   path: "/api/admin",
 };
 
-function getClientIp(req: Parameters<typeof router.post>[1] extends never ? never : any): string {
-  return req.ip || req.socket?.remoteAddress || "unknown";
+function getClientIp(req: Request): string {
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
-function getAuthConfig(): { password: string; sessionSecret: string } | null {
+function getAdminPassword(): string | null {
   const password = process.env.ADMIN_PASSWORD || "";
   const sessionSecret = process.env.SESSION_SECRET || "";
   if (!password || !sessionSecret) return null;
-  return { password, sessionSecret };
+  return password;
 }
 
 function secureEquals(left: string, right: string): boolean {
@@ -46,8 +46,8 @@ function getAttemptState(ip: string): { count: number; resetAt: number } {
 }
 
 router.post("/login", (req, res) => {
-  const config = getAuthConfig();
-  if (!config) {
+  const adminPassword = getAdminPassword();
+  if (!adminPassword) {
     logger.error("ADMIN_PASSWORD or SESSION_SECRET is missing");
     res.status(503).json({ error: "Админка временно недоступна" });
     return;
@@ -63,7 +63,7 @@ router.post("/login", (req, res) => {
   }
 
   const { password } = req.body as { password?: string };
-  if (!password || !secureEquals(password, config.password)) {
+  if (!password || !secureEquals(password, adminPassword)) {
     attempts.count += 1;
     attemptsByIp.set(ip, attempts);
     res.status(401).json({ error: "Неверный пароль" });
