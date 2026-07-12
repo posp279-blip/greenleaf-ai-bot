@@ -7,7 +7,9 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
-import { handleWebhookUpdate } from "./bot/index.js";
+import { getBot, handleWebhookUpdate } from "./bot/index.js";
+import { getVkCallbackDecision, handleVkCallbackEvent } from "./vk/index.js";
+import type { VkCallbackBody } from "./vk/protocol.js";
 
 const app: Express = express();
 const adminAssetsDirectory = fileURLToPath(
@@ -67,6 +69,19 @@ app.post("/api/bot/webhook", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "Webhook update handler error");
   }
+});
+
+// VK Callback API endpoint. It acknowledges immediately and processes the event after the response.
+app.post("/api/vk/callback", (req: Request, res: Response) => {
+  const body = req.body as VkCallbackBody;
+  const decision = getVkCallbackDecision(body);
+
+  res.status(decision.status).type("text/plain; charset=utf-8").send(decision.body);
+  if (!decision.shouldHandle) return;
+
+  setImmediate(() => {
+    void handleVkCallbackEvent(body, getBot());
+  });
 });
 
 app.use("/api", router);
