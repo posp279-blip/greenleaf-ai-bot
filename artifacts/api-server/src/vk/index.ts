@@ -302,7 +302,8 @@ async function processVkMessage(body: VkCallbackBody, telegramBot: TelegramBot |
 
   const callbackData = extractCallbackData(message.payload);
   const originalText = message.text?.trim() || "";
-  const shouldStart = !existing || (referralCode && !existing.refCode);
+  const manualStart = /^(?:\/?start|начать|старт)$/iu.test(originalText);
+  const shouldStart = !existing || Boolean(referralCode && !existing.refCode) || manualStart;
   const effectiveText = shouldStart
     ? `/start${referralCode ? ` ${referralCode}` : ""}`
     : originalText;
