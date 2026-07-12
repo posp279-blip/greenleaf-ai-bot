@@ -13,6 +13,8 @@ const USER_MIN_INTERVAL_MS = readPositiveInt(process.env.TELEGRAM_USER_MIN_INTER
 const processedUpdates = new Map<number, number>();
 const userQueues = new Map<number, Promise<void>>();
 const userLastHandledAt = new Map<number, number>();
+const driveVideoSenders = new WeakSet<TelegramBot>();
+const GOOGLE_DRIVE_VIDEO_RE = /https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)\/view(?:\?[^\s]*)?/iu;
 
 let bot: TelegramBot | null = null;
 let shutdownHandlersInstalled = false;
@@ -71,6 +73,71 @@ function attachBotErrorHandlers(instance: TelegramBot): void {
   });
 }
 
+function extractDriveVideo(text: string): { directUrl: string; caption: string } | null {
+  const match = GOOGLE_DRIVE_VIDEO_RE.exec(text);
+  if (!match?.[1] || match.index === undefined) return null;
+
+  const prefix = text.slice(0, match.index);
+  const marker = prefix.match(/🎬\s*$/u);
+  const removeFrom = marker ? match.index - marker[0].length : match.index;
+  const before = text.slice(0, removeFrom).trimEnd();
+  const after = text.slice(match.index + match[0].length).trimStart();
+  const caption = [before, after].filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+
+  return {
+    directUrl: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(match[1])}`,
+    caption,
+  };
+}
+
+function attachGoogleDriveVideoSender(instance: TelegramBot): void {
+  if (driveVideoSenders.has(instance)) return;
+  driveVideoSenders.add(instance);
+
+  const originalSendMessage = instance.sendMessage.bind(instance);
+  const originalSendVideo = instance.sendVideo.bind(instance);
+
+  instance.sendMessage = (async (
+    chatId: Parameters<TelegramBot["sendMessage"]>[0],
+    text: Parameters<TelegramBot["sendMessage"]>[1],
+    options?: Parameters<TelegramBot["sendMessage"]>[2],
+  ) => {
+    const video = extractDriveVideo(text);
+    if (!video) return originalSendMessage(chatId, text, options);
+
+    const messageOptions = options || {};
+    const common = messageOptions as TelegramBot.SendMessageOptions & {
+      message_thread_id?: number;
+      protect_content?: boolean;
+    };
+
+    try {
+      if (video.caption.length <= 1024) {
+        return await originalSendVideo(chatId, video.directUrl, {
+          caption: video.caption || undefined,
+          parse_mode: common.parse_mode,
+          disable_notification: common.disable_notification,
+          reply_to_message_id: common.reply_to_message_id,
+          reply_markup: common.reply_markup,
+          supports_streaming: true,
+        });
+      }
+
+      const sent = await originalSendVideo(chatId, video.directUrl, {
+        caption: "🎬 Видео",
+        disable_notification: common.disable_notification,
+        reply_to_message_id: common.reply_to_message_id,
+        supports_streaming: true,
+      });
+      await originalSendMessage(chatId, video.caption, messageOptions);
+      return sent;
+    } catch (err) {
+      logger.error({ err, chatId, driveUrl: video.directUrl }, "Failed to send Google Drive video; falling back to link");
+      return originalSendMessage(chatId, text, options);
+    }
+  }) as TelegramBot["sendMessage"];
+}
+
 function installShutdownHandlers(): void {
   if (shutdownHandlersInstalled) return;
   shutdownHandlersInstalled = true;
@@ -120,6 +187,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
   attachSavingsTableFormatter(bot);
+  attachGoogleDriveVideoSender(bot);
   attachBotErrorHandlers(bot);
 
   try {
@@ -183,6 +251,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
     bot = new TelegramBot(token, { polling: true });
     attachSavingsTableFormatter(bot);
+    attachGoogleDriveVideoSender(bot);
     attachBotErrorHandlers(bot);
 
     bot.on("message", async (msg) => {
