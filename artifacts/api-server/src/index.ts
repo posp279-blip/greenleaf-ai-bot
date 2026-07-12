@@ -173,14 +173,22 @@ async function initializeApplication(): Promise<void> {
       phase = "loading_application";
       console.log(`[startup] Loading application, attempt ${initializationAttempt}`);
 
-      const [{ default: app }, { startBot }] = await Promise.all([
+      const [{ default: app }, { startBot }, { seedDatabase }, { seedV2Content }] = await Promise.all([
         import("./app.js"),
         import("./bot/index.js"),
+        import("./bot/seed.js"),
+        import("./bot/content-store-v2.js"),
       ]);
 
       applicationHandler = (req, res) => app(req, res);
       phase = "synchronizing_database";
       await syncDatabaseSchema();
+
+      if (!process.env.TELEGRAM_BOT_TOKEN?.trim()) {
+        phase = "seeding_database";
+        await seedDatabase();
+        await seedV2Content();
+      }
 
       phase = "starting_bot";
       await startBot(webhookUrl);
