@@ -108,10 +108,32 @@ test("VK reply keyboard menu button opens the shared main menu", () => {
 
   const payload = keyboard?.buttons[0]?.[0]?.action.payload;
   assert.equal(keyboard?.inline, false);
+  assert.equal(keyboard?.one_time, false);
   assert.equal(extractCallbackData(payload), "menu_main");
   assert.equal(
     extractCallbackData(JSON.stringify({ callback_data: "☰ Меню" })),
     "menu_main",
+  );
+});
+
+test("shared VK main menu is converted to a persistent bottom keyboard", () => {
+  const keyboard = buildVkKeyboard({
+    inline_keyboard: [
+      [{ text: "Продолжить", callback_data: "menu_continue" }],
+      [
+        { text: "Моя заявка", callback_data: "menu_my_lead" },
+        { text: "Задать вопрос", callback_data: "menu_question" },
+      ],
+      [{ text: "Моя ссылка", callback_data: "partner_link" }],
+    ],
+  }, true);
+
+  assert.equal(keyboard?.inline, false);
+  assert.equal(keyboard?.one_time, false);
+  assert.equal(keyboard?.buttons.length, 3);
+  assert.equal(
+    extractCallbackData(keyboard?.buttons[2]?.[0]?.action.payload),
+    "partner_link",
   );
 });
 
