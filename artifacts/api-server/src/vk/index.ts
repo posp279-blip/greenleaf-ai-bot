@@ -53,8 +53,21 @@ function splitMessage(text: string): string[] {
   return chunks;
 }
 
-function stripTelegramMarkup(text: string): string {
+function decodeHtmlEntities(text: string): string {
   return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function stripTelegramMarkup(text: string): string {
+  return decodeHtmlEntities(text)
+    .replace(/<\/?(?:b|strong|i|em|u|s|code|pre)>/gi, "")
+    .replace(/<a\s+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<[^>]+>/g, "")
     .replace(/\\([_\-*\[\]()~`>#+=|{}.!])/g, "$1")
     .replace(/```[a-z]*\n?/gi, "")
     .replace(/`([^`]+)`/g, "$1")
@@ -65,6 +78,25 @@ function stripTelegramMarkup(text: string): string {
 function notificationWithSource(text: string): string {
   if (!text.startsWith("🆕 Новая заявка") || /Источник:/i.test(text)) return text;
   return `${text}\nИсточник: VK`;
+}
+
+function rewriteTelegramLinksForVk(text: string): string {
+  const groupScreenName = process.env.VK_GROUP_SCREEN_NAME?.trim();
+  if (!groupScreenName) return text;
+
+  return text
+    .replace(
+      /https:\/\/t\.me\/[^\s?]+\?start=([A-Za-z0-9_-]+)/g,
+      (_match, refCode: string) => `https://vk.me/${groupScreenName}?ref=${encodeURIComponent(refCode)}&ref_source=partner`,
+    )
+    .replace(
+      /Открой меню бота и нажми ["«]📞 Партнёрам["»] — там всё для работы с ссылкой\.?/gi,
+      "Нажми «☰ Меню» — там появятся партнёрские инструменты и твоя ссылка.",
+    );
+}
+
+function normalizeVkOutboundText(text: string): string {
+  return stripTelegramMarkup(rewriteTelegramLinksForVk(notificationWithSource(text)));
 }
 
 type VkProfile = {
@@ -132,6 +164,49 @@ class VkApiClient {
 
 const vkClient = new VkApiClient();
 
+function syntheticVkMessage(chatId: number, text: string, messageId = 0): Message {
+  return {
+    message_id: messageId,
+    date: Math.floor(Date.now() / 1000),
+    chat: { id: chatId, type: "private" },
+    text,
+  } as Message;
+}
+
+export async function sendVkMessageToSyntheticUser(
+  syntheticUserId: number,
+  text: string,
+  options: TelegramBot.SendMessageOptions = {},
+): Promise<Message> {
+  const vkUserId = fromVkSyntheticUserId(syntheticUserId);
+  if (!vkUserId) throw new Error(`Invalid VK synthetic user id: ${syntheticUserId}`);
+  if (!vkClient.isConfigured()) throw new Error("VK client is not configured");
+
+  const session = (await db
+    .select({ partnerId: userSessionsTable.partnerId })
+    .from(userSessionsTable)
+    .where(eq(userSessionsTable.telegramUserId, syntheticUserId))
+    .limit(1))[0];
+
+  const keyboard = buildVkKeyboard(
+    options.reply_markup as unknown as Parameters<typeof buildVkKeyboard>[0],
+    Boolean(session?.partnerId),
+  );
+  const normalizedText = normalizeVkOutboundText(text);
+  const chunks = splitMessage(normalizedText);
+
+  let messageId = 0;
+  for (let index = 0; index < chunks.length; index += 1) {
+    messageId = await vkClient.sendMessage(
+      vkUserId,
+      chunks[index] || " ",
+      index === chunks.length - 1 ? keyboard : undefined,
+    );
+  }
+
+  return syntheticVkMessage(syntheticUserId, normalizedText, messageId);
+}
+
 class VkTelegramAdapter {
   constructor(private readonly telegramBot: TelegramBot | null) {}
 
@@ -146,33 +221,12 @@ class VkTelegramAdapter {
     if (!vkUserId) {
       if (!this.telegramBot) {
         logger.warn({ chatId: numericChatId }, "Telegram notification skipped because Telegram bot is unavailable");
-        return this.syntheticMessage(numericChatId, notificationWithSource(text));
+        return syntheticVkMessage(numericChatId, notificationWithSource(text));
       }
       return this.telegramBot.sendMessage(numericChatId, notificationWithSource(text), options);
     }
 
-    const actualPartner = (await db
-      .select({ id: partnersTable.id })
-      .from(partnersTable)
-      .where(eq(partnersTable.telegramUserId, numericChatId))
-      .limit(1))[0];
-
-    const keyboard = buildVkKeyboard(
-      options.reply_markup as unknown as Parameters<typeof buildVkKeyboard>[0],
-      Boolean(actualPartner),
-    );
-    const chunks = splitMessage(stripTelegramMarkup(text));
-
-    let messageId = 0;
-    for (let index = 0; index < chunks.length; index += 1) {
-      messageId = await vkClient.sendMessage(
-        vkUserId,
-        chunks[index] || " ",
-        index === chunks.length - 1 ? keyboard : undefined,
-      );
-    }
-
-    return this.syntheticMessage(numericChatId, text, messageId);
+    return sendVkMessageToSyntheticUser(numericChatId, text, options);
   }
 
   async answerCallbackQuery(_callbackQueryId: string): Promise<boolean> {
@@ -186,15 +240,6 @@ class VkTelegramAdapter {
       first_name: "Greenleaf",
       username: process.env.VK_GROUP_SCREEN_NAME?.trim() || "greenleaf_vk",
     };
-  }
-
-  private syntheticMessage(chatId: number, text: string, messageId = 0): Message {
-    return {
-      message_id: messageId,
-      date: Math.floor(Date.now() / 1000),
-      chat: { id: chatId, type: "private" },
-      text,
-    } as Message;
   }
 }
 
