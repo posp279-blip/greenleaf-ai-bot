@@ -99,3 +99,13 @@ test("VK button payload is parsed and partner actions can be hidden", () => {
   assert.equal(keyboard?.buttons[0]?.[0]?.action.label, "Начать");
   assert.equal(keyboard?.buttons[0]?.[0]?.color, "positive");
 });
+
+test("VK reply keyboard menu button opens the shared main menu", () => {
+  const keyboard = buildVkKeyboard({
+    keyboard: [[{ text: "☰ Меню" }]],
+  }, false);
+
+  const payload = keyboard?.buttons[0]?.[0]?.action.payload;
+  assert.equal(keyboard?.inline, false);
+  assert.equal(extractCallbackData(payload), "menu_main");
+});
