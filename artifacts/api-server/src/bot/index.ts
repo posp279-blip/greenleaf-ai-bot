@@ -107,17 +107,32 @@ async function dispatchCallback(instance: TelegramBot, query: NonNullable<Update
   }
 }
 
+function createOutboundOnlyBot(token: string): TelegramBot {
+  const instance = new TelegramBot(token, { polling: false, webHook: false });
+  attachSavingsTableFormatter(instance);
+  attachBotErrorHandlers(instance);
+  return instance;
+}
+
 export async function startBot(webhookUrl?: string): Promise<void> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    logger.warn("TELEGRAM_BOT_TOKEN not set — bot will not start");
-    return;
-  }
+  const receiverToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const notificationToken = process.env.TELEGRAM_NOTIFICATION_BOT_TOKEN?.trim();
 
   await seedDatabase();
   await seedV2Content();
   installShutdownHandlers();
 
+  if (!receiverToken) {
+    if (notificationToken) {
+      bot = createOutboundOnlyBot(notificationToken);
+      logger.info("Telegram outbound notifications enabled; receiver remains disabled");
+    } else {
+      logger.warn("TELEGRAM_BOT_TOKEN not set — Telegram receiver will not start");
+    }
+    return;
+  }
+
+  const token = receiverToken;
   bot = new TelegramBot(token, { polling: false, webHook: false });
   attachSavingsTableFormatter(bot);
   attachBotErrorHandlers(bot);
