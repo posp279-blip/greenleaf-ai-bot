@@ -55,6 +55,20 @@ type TelegramReplyMarkup = {
 };
 
 const REF_CODE_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const REPLY_BUTTON_ACTIONS: Record<string, string> = {
+  "☰ Меню": "menu_main",
+  "☀ Меню": "menu_main",
+  "≡ Меню": "menu_main",
+  "Меню": "menu_main",
+};
+
+function resolveVkButtonAction(button: TelegramButton): string {
+  const explicit = button.callback_data?.trim();
+  if (explicit) return explicit;
+
+  const label = button.text?.trim() || "";
+  return REPLY_BUTTON_ACTIONS[label] || label;
+}
 
 export function toVkSyntheticUserId(vkUserId: number): number {
   if (!Number.isSafeInteger(vkUserId) || vkUserId <= 0) {
@@ -161,17 +175,20 @@ export function buildVkKeyboard(
     .map((row) => row
       .filter((button) => {
         if (!button.text) return false;
-        const action = button.callback_data || "";
+        const action = resolveVkButtonAction(button);
         return allowPartnerActions || !action.startsWith("partner_");
       })
-      .map((button): VkButton => ({
-        action: {
-          type: "text",
-          label: button.text || "Продолжить",
-          payload: JSON.stringify({ callback_data: button.callback_data || button.text || "" }),
-        },
-        color: button.callback_data === "v2_start" ? "positive" : "primary",
-      })))
+      .map((button): VkButton => {
+        const action = resolveVkButtonAction(button);
+        return {
+          action: {
+            type: "text",
+            label: button.text || "Продолжить",
+            payload: JSON.stringify({ callback_data: action }),
+          },
+          color: action === "v2_start" ? "positive" : "primary",
+        };
+      }))
     .filter((row) => row.length > 0);
 
   if (!buttons.length) return undefined;
