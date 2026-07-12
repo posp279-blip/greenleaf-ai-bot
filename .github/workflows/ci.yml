@@ -5,9 +5,11 @@ on:
     branches:
       - main
       - feature/friendly-scenario-v2
+      - agent/vk-channel-referrals
   pull_request:
     branches:
       - main
+      - feature/friendly-scenario-v2
 
 permissions:
   contents: read
@@ -39,7 +41,11 @@ jobs:
       - name: Unit tests
         id: tests
         continue-on-error: true
-        run: pnpm --dir scripts exec tsx --test "$GITHUB_WORKSPACE/artifacts/api-server/src/bot/flow-v2.test.ts" 2>&1 | tee ci-logs/tests.log
+        run: |
+          pnpm --dir scripts exec tsx --test \
+            "$GITHUB_WORKSPACE/artifacts/api-server/src/bot/flow-v2.test.ts" \
+            "$GITHUB_WORKSPACE/artifacts/api-server/src/vk/protocol.test.ts" \
+            2>&1 | tee ci-logs/tests.log
 
       - name: Typecheck
         id: typecheck
