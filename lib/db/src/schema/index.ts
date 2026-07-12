@@ -8,6 +8,7 @@ import {
   bigint,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -41,7 +42,11 @@ export type Partner = typeof partnersTable.$inferSelect;
 // ─── UserSessions ─────────────────────────────────────────────────────────────
 export const userSessionsTable = pgTable("user_sessions", {
   id: serial("id").primaryKey(),
+  // Telegram keeps its native positive ID. VK uses a negative synthetic ID so
+  // legacy Telegram-specific code remains backward compatible and cannot clash.
   telegramUserId: bigint("telegram_user_id", { mode: "number" }).notNull(),
+  platform: text("platform").notNull().default("telegram"),
+  platformUserId: text("platform_user_id"),
   username: text("username"),
   firstName: text("first_name"),
   lastName: text("last_name"),
@@ -62,6 +67,8 @@ export const userSessionsTable = pgTable("user_sessions", {
   index("user_sessions_telegram_user_id_idx").on(table.telegramUserId),
   index("user_sessions_partner_id_idx").on(table.partnerId),
   index("user_sessions_current_stage_idx").on(table.currentStage),
+  index("user_sessions_platform_idx").on(table.platform),
+  uniqueIndex("user_sessions_platform_user_id_uidx").on(table.platform, table.platformUserId),
 ]);
 
 export const insertUserSessionSchema = createInsertSchema(
@@ -97,6 +104,7 @@ export const leadsTable = pgTable("leads", {
   id: serial("id").primaryKey(),
   sessionId: integer("session_id").notNull(),
   partnerId: integer("partner_id"),
+  source: text("source").notNull().default("telegram"),
   name: text("name").notNull(),
   contact: text("contact").notNull(),
   comment: text("comment"),
@@ -107,6 +115,7 @@ export const leadsTable = pgTable("leads", {
 }, (table) => [
   index("leads_session_id_idx").on(table.sessionId),
   index("leads_partner_id_idx").on(table.partnerId),
+  index("leads_source_idx").on(table.source),
   index("leads_status_idx").on(table.status),
   index("leads_created_at_idx").on(table.createdAt),
 ]);
