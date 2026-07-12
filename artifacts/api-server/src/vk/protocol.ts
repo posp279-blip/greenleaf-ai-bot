@@ -61,6 +61,18 @@ const REPLY_BUTTON_ACTIONS: Record<string, string> = {
   "≡ Меню": "menu_main",
   "Меню": "menu_main",
 };
+const MAIN_MENU_ACTIONS = new Set([
+  "menu_continue",
+  "menu_calc",
+  "menu_my_lead",
+  "menu_question",
+  "menu_contact",
+  "partner_link",
+  "partner_leads",
+  "partner_stats",
+  "partner_how",
+  "restart_confirm",
+]);
 
 function normalizeVkAction(value: string): string {
   const normalized = value.trim();
@@ -196,7 +208,10 @@ export function buildVkKeyboard(
   const sourceRows = replyMarkup.inline_keyboard || replyMarkup.keyboard;
   if (!sourceRows?.length) return undefined;
 
-  const inline = Boolean(replyMarkup.inline_keyboard);
+  const isSharedMainMenu = sourceRows
+    .flat()
+    .some((button) => MAIN_MENU_ACTIONS.has(resolveVkButtonAction(button)));
+  const inline = Boolean(replyMarkup.inline_keyboard) && !isSharedMainMenu;
   const buttons = sourceRows
     .map((row) => row
       .filter((button) => {
