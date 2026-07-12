@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { eq } from "drizzle-orm";
 import { db, partnersTable } from "@workspace/db";
+import { normalizeVkMessageText } from "../vk/protocol.js";
 
 const formattedBots = new WeakSet<TelegramBot>();
 
@@ -150,6 +151,7 @@ export function attachSavingsTableFormatter(instance: TelegramBot): void {
   formattedBots.add(instance);
 
   const originalSendMessage = instance.sendMessage.bind(instance);
+  const isNativeTelegramBot = instance instanceof TelegramBot;
 
   instance.sendMessage = (async (
     chatId: Parameters<TelegramBot["sendMessage"]>[0],
@@ -161,9 +163,17 @@ export function attachSavingsTableFormatter(instance: TelegramBot): void {
 
     const formattedTable = formatSavingsTable(enrichedText);
     if (formattedTable) {
-      return originalSendMessage(chatId, formattedTable, {
-        ...options,
-        parse_mode: "HTML",
+      if (isNativeTelegramBot) {
+        return originalSendMessage(chatId, formattedTable, {
+          ...options,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        });
+      }
+
+      const { parse_mode: _parseMode, ...vkOptions } = options || {};
+      return originalSendMessage(chatId, normalizeVkMessageText(formattedTable), {
+        ...vkOptions,
         disable_web_page_preview: true,
       });
     }
