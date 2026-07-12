@@ -62,12 +62,17 @@ const REPLY_BUTTON_ACTIONS: Record<string, string> = {
   "Меню": "menu_main",
 };
 
+function normalizeVkAction(value: string): string {
+  const normalized = value.trim();
+  return REPLY_BUTTON_ACTIONS[normalized] || normalized;
+}
+
 function resolveVkButtonAction(button: TelegramButton): string {
   const explicit = button.callback_data?.trim();
-  if (explicit) return explicit;
+  if (explicit) return normalizeVkAction(explicit);
 
   const label = button.text?.trim() || "";
-  return REPLY_BUTTON_ACTIONS[label] || label;
+  return normalizeVkAction(label);
 }
 
 export function toVkSyntheticUserId(vkUserId: number): number {
@@ -119,7 +124,9 @@ export function parseVkPayload(payload: unknown): Record<string, unknown> | null
 
 export function extractCallbackData(payload: unknown): string | undefined {
   const parsed = parseVkPayload(payload);
-  return typeof parsed?.callback_data === "string" ? parsed.callback_data : undefined;
+  return typeof parsed?.callback_data === "string"
+    ? normalizeVkAction(parsed.callback_data)
+    : undefined;
 }
 
 export function chooseReferralCode(
