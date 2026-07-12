@@ -5,6 +5,7 @@ import { handleMessage, handleCallback, handleAdminCallback } from "./engine-v2.
 import { seedDatabase } from "./seed.js";
 import { seedV2Content } from "./content-store-v2.js";
 import { attachSavingsTableFormatter } from "./savings-table-format.js";
+import { sendVkMessageToSyntheticUser } from "../vk/index.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
@@ -13,6 +14,7 @@ const USER_MIN_INTERVAL_MS = readPositiveInt(process.env.TELEGRAM_USER_MIN_INTER
 const processedUpdates = new Map<number, number>();
 const userQueues = new Map<number, Promise<void>>();
 const userLastHandledAt = new Map<number, number>();
+const crossPlatformBots = new WeakSet<TelegramBot>();
 
 let bot: TelegramBot | null = null;
 let shutdownHandlersInstalled = false;
@@ -71,6 +73,60 @@ function attachBotErrorHandlers(instance: TelegramBot): void {
   });
 }
 
+function attachCrossPlatformSender(instance: TelegramBot): void {
+  if (crossPlatformBots.has(instance)) return;
+  crossPlatformBots.add(instance);
+
+  const originalSendMessage = instance.sendMessage.bind(instance);
+  instance.sendMessage = (async (
+    chatId: Parameters<TelegramBot["sendMessage"]>[0],
+    text: Parameters<TelegramBot["sendMessage"]>[1],
+    options?: Parameters<TelegramBot["sendMessage"]>[2],
+  ) => {
+    const numericChatId = Number(chatId);
+    if (Number.isSafeInteger(numericChatId) && numericChatId < 0) {
+      return sendVkMessageToSyntheticUser(numericChatId, text, options || {});
+    }
+    return originalSendMessage(chatId, text, options);
+  }) as TelegramBot["sendMessage"];
+}
+
+function prepareBotInstance(instance: TelegramBot): TelegramBot {
+  attachSavingsTableFormatter(instance);
+  attachCrossPlatformSender(instance);
+  attachBotErrorHandlers(instance);
+  return instance;
+}
+
+async function storeBotUsername(username: string): Promise<void> {
+  if (!username) return;
+  await db
+    .insert(appSettingsTable)
+    .values({ key: "bot_username", value: username })
+    .onConflictDoUpdate({
+      target: appSettingsTable.key,
+      set: { value: username, updatedAt: new Date() },
+    });
+  logger.info({ username }, "Bot username stored");
+}
+
+async function storeLiveBotUsername(instance: TelegramBot): Promise<void> {
+  try {
+    const me = await instance.getMe();
+    if (me.username) await storeBotUsername(me.username);
+  } catch (err) {
+    logger.error({ err }, "Failed to get bot info");
+  }
+}
+
+function createOutboundOnlyBot(token: string): TelegramBot {
+  return prepareBotInstance(new TelegramBot(token, { polling: false, webHook: false }));
+}
+
+function createVkBridgeBot(): TelegramBot {
+  return prepareBotInstance(new TelegramBot("0:vk-bridge", { polling: false, webHook: false }));
+}
+
 function installShutdownHandlers(): void {
   if (shutdownHandlersInstalled) return;
   shutdownHandlersInstalled = true;
@@ -107,16 +163,11 @@ async function dispatchCallback(instance: TelegramBot, query: NonNullable<Update
   }
 }
 
-function createOutboundOnlyBot(token: string): TelegramBot {
-  const instance = new TelegramBot(token, { polling: false, webHook: false });
-  attachSavingsTableFormatter(instance);
-  attachBotErrorHandlers(instance);
-  return instance;
-}
-
 export async function startBot(webhookUrl?: string): Promise<void> {
   const receiverToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const notificationToken = process.env.TELEGRAM_NOTIFICATION_BOT_TOKEN?.trim();
+  const vkScreenName = process.env.VK_GROUP_SCREEN_NAME?.trim();
+  const vkConfigured = Boolean(process.env.VK_GROUP_TOKEN?.trim() && process.env.VK_GROUP_ID?.trim());
 
   await seedDatabase();
   await seedV2Content();
@@ -125,7 +176,12 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   if (!receiverToken) {
     if (notificationToken) {
       bot = createOutboundOnlyBot(notificationToken);
+      await storeLiveBotUsername(bot);
       logger.info("Telegram outbound notifications enabled; receiver remains disabled");
+    } else if (vkConfigured) {
+      bot = createVkBridgeBot();
+      if (vkScreenName) await storeBotUsername(vkScreenName);
+      logger.info("VK bridge sender enabled; Telegram receiver remains disabled");
     } else {
       logger.warn("TELEGRAM_BOT_TOKEN not set — Telegram receiver will not start");
     }
@@ -133,25 +189,8 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   }
 
   const token = receiverToken;
-  bot = new TelegramBot(token, { polling: false, webHook: false });
-  attachSavingsTableFormatter(bot);
-  attachBotErrorHandlers(bot);
-
-  try {
-    const me = await bot.getMe();
-    if (me.username) {
-      await db
-        .insert(appSettingsTable)
-        .values({ key: "bot_username", value: me.username })
-        .onConflictDoUpdate({
-          target: appSettingsTable.key,
-          set: { value: me.username, updatedAt: new Date() },
-        });
-      logger.info({ username: me.username }, "Bot username stored");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to get bot info");
-  }
+  bot = prepareBotInstance(new TelegramBot(token, { polling: false, webHook: false }));
+  await storeLiveBotUsername(bot);
 
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
   let webhookConfigured = false;
@@ -196,9 +235,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
       throw err;
     }
 
-    bot = new TelegramBot(token, { polling: true });
-    attachSavingsTableFormatter(bot);
-    attachBotErrorHandlers(bot);
+    bot = prepareBotInstance(new TelegramBot(token, { polling: true }));
 
     bot.on("message", async (msg) => {
       const userId = msg.from?.id;
