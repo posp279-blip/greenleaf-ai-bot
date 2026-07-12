@@ -108,4 +108,8 @@ test("VK reply keyboard menu button opens the shared main menu", () => {
   const payload = keyboard?.buttons[0]?.[0]?.action.payload;
   assert.equal(keyboard?.inline, false);
   assert.equal(extractCallbackData(payload), "menu_main");
+  assert.equal(
+    extractCallbackData(JSON.stringify({ callback_data: "☰ Меню" })),
+    "menu_main",
+  );
 });
