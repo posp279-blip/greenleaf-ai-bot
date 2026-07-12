@@ -75,6 +75,25 @@ function resolveVkButtonAction(button: TelegramButton): string {
   return normalizeVkAction(label);
 }
 
+export function normalizeVkMessageText(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<a\s+[^>]*href=(['"])(.*?)\1[^>]*>(.*?)<\/a>/gis, "$3 ($2)")
+    .replace(/<\/?(?:b|strong|i|em|u|s|strike|code|pre)>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\\([_\-*\[\]()~`>#+=|{}.!])/g, "$1")
+    .replace(/```[a-z]*\n?/gi, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1");
+}
+
 export function toVkSyntheticUserId(vkUserId: number): number {
   if (!Number.isSafeInteger(vkUserId) || vkUserId <= 0) {
     throw new Error("VK user id must be a positive safe integer");
