@@ -8,6 +8,7 @@ import {
   extractCallbackData,
   extractReferralCode,
   fromVkSyntheticUserId,
+  normalizeVkMessageText,
   sanitizeReferralCode,
   toVkSyntheticUserId,
 } from "./protocol.js";
@@ -111,5 +112,26 @@ test("VK reply keyboard menu button opens the shared main menu", () => {
   assert.equal(
     extractCallbackData(JSON.stringify({ callback_data: "☰ Меню" })),
     "menu_main",
+  );
+});
+
+test("Telegram HTML is converted to readable VK text", () => {
+  const formatted = [
+    "<b>📊 СРАВНЕНИЕ РАСХОДОВ ЗА ГОД</b>",
+    "<b>🧺 Стирка белья</b>",
+    "🏪 Масс-маркет: <b>1 500 ₽</b>",
+    "<i>Расчёт примерный &amp; зависит от цен.</i>",
+    '<a href="https://example.com">Подробнее</a>',
+  ].join("\n");
+
+  assert.equal(
+    normalizeVkMessageText(formatted),
+    [
+      "📊 СРАВНЕНИЕ РАСХОДОВ ЗА ГОД",
+      "🧺 Стирка белья",
+      "🏪 Масс-маркет: 1 500 ₽",
+      "Расчёт примерный & зависит от цен.",
+      "Подробнее (https://example.com)",
+    ].join("\n"),
   );
 });
