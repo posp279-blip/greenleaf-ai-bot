@@ -1,4 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
+import { eq } from "drizzle-orm";
+import { db, partnersTable } from "@workspace/db";
 
 const formattedBots = new WeakSet<TelegramBot>();
 
@@ -110,8 +112,37 @@ function formatPartnerOnboarding(text: string): string | null {
 
   return text.replace(
     outdatedInstruction,
-    'Нажми кнопку «📤 Как отправить» ниже — там готовый текст для отправки и твоя партнёрская ссылка.',
+    'Нажми кнопку «📤 Как отправить» ниже — там готовый текст для отправки и твои партнёрские ссылки.',
   );
+}
+
+async function appendVkPartnerLink(chatId: number | string, text: string): Promise<string> {
+  const groupScreenName = process.env.VK_GROUP_SCREEN_NAME?.trim();
+  const numericChatId = Number(chatId);
+  if (!groupScreenName || !Number.isSafeInteger(numericChatId) || text.includes("vk.me/")) return text;
+
+  const partner = (await db
+    .select({ refCode: partnersTable.refCode })
+    .from(partnersTable)
+    .where(eq(partnersTable.telegramUserId, numericChatId))
+    .limit(1))[0];
+  if (!partner) return text;
+
+  const vkLink = `https://vk.me/${groupScreenName}?ref=${encodeURIComponent(partner.refCode)}&ref_source=partner`;
+
+  if (/^🔗\s+\*?Твоя ссылка/i.test(text)) {
+    return `${text}\n\n🔵 VK:\n${vkLink}`;
+  }
+
+  if (text.startsWith("📤 Как отправить бот")) {
+    return `${text}\n\n🔵 Для VK используй эту ссылку:\n${vkLink}`;
+  }
+
+  if (text.includes("Твоя реферальная ссылка:")) {
+    return `${text}\n\nТвоя ссылка для VK:\n${vkLink}`;
+  }
+
+  return text;
 }
 
 export function attachSavingsTableFormatter(instance: TelegramBot): void {
@@ -120,12 +151,15 @@ export function attachSavingsTableFormatter(instance: TelegramBot): void {
 
   const originalSendMessage = instance.sendMessage.bind(instance);
 
-  instance.sendMessage = ((
+  instance.sendMessage = (async (
     chatId: Parameters<TelegramBot["sendMessage"]>[0],
     text: Parameters<TelegramBot["sendMessage"]>[1],
     options?: Parameters<TelegramBot["sendMessage"]>[2],
   ) => {
-    const formattedTable = formatSavingsTable(text);
+    const partnerOnboarding = formatPartnerOnboarding(text);
+    const enrichedText = await appendVkPartnerLink(chatId, partnerOnboarding || text);
+
+    const formattedTable = formatSavingsTable(enrichedText);
     if (formattedTable) {
       return originalSendMessage(chatId, formattedTable, {
         ...options,
@@ -134,9 +168,8 @@ export function attachSavingsTableFormatter(instance: TelegramBot): void {
       });
     }
 
-    const partnerOnboarding = formatPartnerOnboarding(text);
     if (partnerOnboarding) {
-      return originalSendMessage(chatId, partnerOnboarding, {
+      return originalSendMessage(chatId, enrichedText, {
         ...options,
         reply_markup: {
           inline_keyboard: [
@@ -148,6 +181,6 @@ export function attachSavingsTableFormatter(instance: TelegramBot): void {
       });
     }
 
-    return originalSendMessage(chatId, text, options);
+    return originalSendMessage(chatId, enrichedText, options);
   }) as TelegramBot["sendMessage"];
 }
