@@ -203,15 +203,18 @@ export function buildVkKeyboard(
   replyMarkup: TelegramReplyMarkup | undefined,
   allowPartnerActions: boolean,
 ): VkKeyboard | undefined {
-  if (!replyMarkup) return undefined;
-
-  const sourceRows = replyMarkup.inline_keyboard || replyMarkup.keyboard;
-  if (!sourceRows?.length) return undefined;
+  const fallbackRows: TelegramButton[][] = [[{ text: "☰ Меню" }]];
+  const sourceRows = replyMarkup?.inline_keyboard?.length
+    ? replyMarkup.inline_keyboard
+    : replyMarkup?.keyboard?.length
+      ? replyMarkup.keyboard
+      : fallbackRows;
+  const isFallbackMenu = sourceRows === fallbackRows;
 
   const isSharedMainMenu = sourceRows
     .flat()
     .some((button) => MAIN_MENU_ACTIONS.has(resolveVkButtonAction(button)));
-  const inline = Boolean(replyMarkup.inline_keyboard) && !isSharedMainMenu;
+  const inline = !isFallbackMenu && Boolean(replyMarkup?.inline_keyboard) && !isSharedMainMenu;
   const buttons = sourceRows
     .map((row) => row
       .filter((button) => {
