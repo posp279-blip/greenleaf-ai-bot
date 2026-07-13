@@ -2,89 +2,116 @@
 
 ## Что разворачивается
 
-Этот сценарий создаёт один Railway-сервис для Node.js API и Telegram-бота, а также отдельный Railway PostgreSQL.
+Один Railway-сервис обслуживает Node.js API, Telegram-бота, VK-бота и веб-админку. PostgreSQL работает отдельным Railway-сервисом.
 
-Telegram-админка работает в этом же сервисе. Веб-интерфейс админки при необходимости можно развернуть позже отдельным сервисом из того же монорепозитория.
+Telegram и VK используют общий сценарий, AI, реферальные коды, заявки и базу данных.
 
 ## 1. Создать проект
 
 1. Открыть Railway и нажать **New Project**.
 2. Выбрать **Deploy from GitHub repo**.
 3. Подключить репозиторий `posp279-blip/greenleaf-ai-bot`.
-4. Для первого запуска выбрать ветку `feature/friendly-scenario-v2`.
-5. Корневую директорию сервиса оставить `/`. Не указывать `artifacts/api-server`, потому что API использует общие workspace-пакеты из `lib/*`.
+4. Для теста VK выбрать ветку `agent/vk-channel-referrals`.
+5. Корневую директорию сервиса оставить `/`.
 6. Если Railway предложит несколько сервисов монорепозитория, оставить один сервис для `@workspace/api-server`.
 
-Файл `railway.json` автоматически задаёт:
-
-- сборку API;
-- проверку TypeScript;
-- применение схемы PostgreSQL перед запуском;
-- команду старта;
-- healthcheck `/api/healthz`;
-- перезапуск при сбое.
+Файл `railway.json` задаёт сборку API и админки, команду старта, healthcheck `/api/healthz` и перезапуск при сбое. При запуске приложение синхронизирует Drizzle-схему PostgreSQL до старта ботов.
 
 ## 2. Добавить PostgreSQL
 
 1. На полотне проекта нажать **+ New**.
 2. Выбрать **Database → PostgreSQL**.
 3. Открыть вкладку **Variables** у сервиса бота.
-4. Создать `DATABASE_URL` как reference variable на `DATABASE_URL` сервиса PostgreSQL. В редакторе Railway выбрать значение через автодополнение, например `${{Postgres.DATABASE_URL}}`.
+4. Создать `DATABASE_URL` как reference variable на PostgreSQL, например `${{Postgres.DATABASE_URL}}`.
 
 Не копировать публичную строку подключения вручную, если доступна внутренняя reference variable.
 
 ## 3. Добавить Variables и Secrets
 
-Обязательные:
-
 ```env
 NODE_ENV=production
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+
 TELEGRAM_BOT_TOKEN=<токен BotFather>
 TELEGRAM_WEBHOOK_SECRET=<случайная строка не короче 32 символов>
+TELEGRAM_UPDATE_DEDUP_TTL_MS=600000
+TELEGRAM_USER_MIN_INTERVAL_MS=500
+
+VK_GROUP_TOKEN=<ключ доступа сообщества>
+VK_GROUP_ID=<числовой ID сообщества без минуса>
+VK_GROUP_SCREEN_NAME=<короткое имя сообщества из адреса vk.com/...>
+VK_CALLBACK_SECRET=<секрет Callback API>
+VK_CONFIRMATION_CODE=<строка подтверждения сервера из VK>
+VK_API_VERSION=5.199
+VK_EVENT_DEDUP_TTL_MS=600000
+VK_USER_MIN_INTERVAL_MS=500
+
 ADMIN_PASSWORD=<пароль админки>
 SESSION_SECRET=<случайная строка не короче 64 символов>
 ADMIN_TELEGRAM_IDS=<Telegram ID администраторов через запятую>
+
 PROXY_API_KEY=<ключ Proxy API>
 PROXY_API_BASE_URL=https://api.proxyapi.ru/openai/v1
 PROXY_API_MODEL=gpt-4o-mini
-TELEGRAM_UPDATE_DEDUP_TTL_MS=600000
-TELEGRAM_USER_MIN_INTERVAL_MS=500
 ```
 
-`PORT` добавлять не нужно — Railway передаёт его автоматически.
+`PORT` добавлять не нужно — Railway передаёт его автоматически. `PUBLIC_APP_URL` обычно не нужен: используется `RAILWAY_PUBLIC_DOMAIN`.
 
-`PUBLIC_APP_URL` обычно добавлять не нужно — приложение использует `RAILWAY_PUBLIC_DOMAIN`. Он нужен только при подключении собственного домена или ручном переопределении адреса.
-
-Токены, пароль и секреты рекомендуется пометить как **Sealed** после успешного запуска.
+Токены, пароль и секреты рекомендуется пометить как **Sealed**.
 
 ## 4. Создать публичный домен
 
 1. Открыть сервис бота.
 2. Перейти в **Settings → Networking**.
 3. Нажать **Generate Domain**.
-4. После появления домена выполнить **Redeploy**, если первый деплой уже завершился.
+4. После появления домена выполнить **Redeploy**.
 
-Приложение автоматически установит Telegram webhook:
+Telegram webhook устанавливается автоматически:
 
 ```text
 https://<RAILWAY_PUBLIC_DOMAIN>/api/bot/webhook
 ```
 
-Webhook защищается значением `TELEGRAM_WEBHOOK_SECRET`.
-
-## 5. Первый безопасный запуск
-
-Для первой проверки использовать токен отдельного тестового Telegram-бота.
-
-В логах должны появиться сообщения:
+VK Callback API:
 
 ```text
-Server listening
-Bot username stored
-Telegram webhook set
-Telegram bot started in webhook mode
+https://<RAILWAY_PUBLIC_DOMAIN>/api/vk/callback
 ```
+
+## 5. Настроить сообщество VK
+
+1. Создать отдельное сообщество или использовать существующее сообщество Greenleaf.
+2. Включить **Сообщения сообщества**.
+3. В настройках API создать ключ доступа сообщества с минимально необходимыми правами на сообщения.
+4. Скопировать токен в Railway как `VK_GROUP_TOKEN`.
+5. Указать числовой ID сообщества в `VK_GROUP_ID` без знака минус.
+6. В `VK_GROUP_SCREEN_NAME` указать короткое имя из адреса сообщества. Например, для `vk.com/greenleaf_agent` значение будет `greenleaf_agent`.
+7. Открыть настройки **Callback API** и добавить сервер.
+8. Вставить адрес `https://<RAILWAY_PUBLIC_DOMAIN>/api/vk/callback`.
+9. Скопировать строку подтверждения сервера в `VK_CONFIRMATION_CODE`.
+10. Создать секретную строку, указать одинаковое значение в VK и `VK_CALLBACK_SECRET`.
+11. После Redeploy подтвердить сервер.
+12. В событиях Callback API включить минимум **Входящее сообщение**.
+
+## 6. Реферальные ссылки
+
+У каждого партнёра один общий `refCode`, но две ссылки:
+
+```text
+Telegram:
+https://t.me/<BOT_USERNAME>?start=<refCode>
+
+VK:
+https://vk.me/<VK_GROUP_SCREEN_NAME>?ref=<refCode>&ref_source=partner
+```
+
+Бот сохраняет первого валидного пригласившего партнёра. Повторный переход по другой ссылке не должен менять спонсора уже созданной сессии.
+
+Кнопки **«🔗 Моя ссылка»** и **«📤 Как отправить»** показывают обе ссылки, когда `VK_GROUP_SCREEN_NAME` настроен.
+
+## 7. Первый безопасный запуск
+
+Для первой проверки использовать тестовое сообщество VK и, по возможности, токен отдельного тестового Telegram-бота.
 
 Проверить healthcheck:
 
@@ -92,45 +119,47 @@ Telegram bot started in webhook mode
 https://<RAILWAY_PUBLIC_DOMAIN>/api/healthz
 ```
 
-Ожидаемый ответ:
+Затем пройти smoke-test:
 
-```json
-{"status":"ok"}
-```
-
-Затем пройти:
+### Telegram
 
 - `/start`;
 - полный сценарий;
-- видео и заглушки;
-- финальную заявку;
-- перевод заявки в партнёра;
-- партнёрскую ссылку;
-- кнопку «📤 Как отправить»;
-- Telegram-админку;
-- Proxy API.
+- финальная заявка;
+- партнёрская ссылка;
+- кнопка «📤 Как отправить»;
+- админка и уведомления.
 
-## 6. Переключение основного Telegram-бота
+### VK
 
-Один Telegram-токен не должен одновременно использоваться рабочим Replit и Railway.
+- обычное первое сообщение сообществу;
+- кнопка «▶️ Начать»;
+- несколько этапов сценария и возврат через меню;
+- реферальная ссылка конкретного партнёра;
+- финальная заявка;
+- источник `VK` в уведомлении и админке;
+- отдельность сессий VK и Telegram с одинаковым числовым ID;
+- повторное событие Callback API не должно создавать дубль.
+
+### После теста
+
+- убедиться, что рабочий Telegram-бот продолжает отвечать;
+- проверить логи Railway на ошибки VK API;
+- проверить вкладки **Заявки** и **Диалоги** в админке;
+- не переключать production на эту ветку до завершения проверки PR.
+
+## 8. Переключение production
+
+Один Telegram-токен не должен одновременно использоваться двумя активными deployment.
 
 Порядок переключения:
 
-1. Остановить старый Replit deployment.
-2. В Railway заменить тестовый `TELEGRAM_BOT_TOKEN` на основной.
-3. Проверить `TELEGRAM_WEBHOOK_SECRET`.
-4. Выполнить Redeploy.
-5. Убедиться по логам, что запущен webhook mode.
-6. Отправить основному боту `/start` и проверить меню.
+1. Сделать резервную копию PostgreSQL.
+2. Проверить успешный CI PR с тестами, typecheck и build.
+3. Остановить старый deployment только непосредственно перед переключением.
+4. Установить production-переменные Railway.
+5. Выполнить Redeploy.
+6. Проверить Telegram и VK по smoke-test.
+7. При ошибке вернуть предыдущую ветку/deployment и не менять базу вручную.
 
-## 7. Обновления
-
-Пока версия v2 не объединена с `main`, Railway должен отслеживать ветку `feature/friendly-scenario-v2`.
-
-После слияния Pull Request №1:
-
-1. В Railway открыть настройки Source.
-2. Переключить branch на `main`.
-3. Выполнить Redeploy.
-
-Не включать несколько реплик сервиса: текущие очереди и дедупликация Telegram-сообщений хранятся в памяти одного процесса. Для этой версии должна работать одна replica.
+Не включать несколько реплик сервиса: очереди и дедупликация событий хранятся в памяти одного процесса. Для этой версии должна работать одна replica.
