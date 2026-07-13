@@ -1,4 +1,3 @@
-import axios from "axios";
 import TelegramBot from "node-telegram-bot-api";
 import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
@@ -6,19 +5,15 @@ import { handleMessage, handleCallback, handleAdminCallback } from "./engine-v2.
 import { seedDatabase } from "./seed.js";
 import { seedV2Content } from "./content-store-v2.js";
 import { attachSavingsTableFormatter } from "./savings-table-format.js";
+import { attachGoogleDriveVideoSender } from "./google-drive-video-sender.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
 const UPDATE_DEDUP_TTL_MS = readPositiveInt(process.env.TELEGRAM_UPDATE_DEDUP_TTL_MS, 10 * 60_000);
 const USER_MIN_INTERVAL_MS = readPositiveInt(process.env.TELEGRAM_USER_MIN_INTERVAL_MS, 500);
-const TELEGRAM_VIDEO_MAX_BYTES = 49 * 1024 * 1024;
 const processedUpdates = new Map<number, number>();
 const userQueues = new Map<number, Promise<void>>();
 const userLastHandledAt = new Map<number, number>();
-const driveVideoSenders = new WeakSet<TelegramBot>();
-const telegramVideoFileIds = new Map<string, string>();
-const driveVideoDownloads = new Map<string, Promise<Buffer>>();
-const GOOGLE_DRIVE_VIDEO_RE = /https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)\/view(?:\?[^\s]*)?/iu;
 
 let bot: TelegramBot | null = null;
 let shutdownHandlersInstalled = false;
@@ -75,156 +70,6 @@ function attachBotErrorHandlers(instance: TelegramBot): void {
   instance.on("webhook_error", (err) => {
     logger.error({ err }, "Telegram webhook error");
   });
-}
-
-function extractDriveVideo(text: string): { fileId: string; sourceUrl: string; caption: string } | null {
-  const match = GOOGLE_DRIVE_VIDEO_RE.exec(text);
-  if (!match?.[1] || match.index === undefined) return null;
-
-  const prefix = text.slice(0, match.index);
-  const marker = prefix.match(/🎬\s*$/u);
-  const removeFrom = marker ? match.index - marker[0].length : match.index;
-  const before = text.slice(0, removeFrom).trimEnd();
-  const after = text.slice(match.index + match[0].length).trimStart();
-  const caption = [before, after].filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-
-  return {
-    fileId: match[1],
-    sourceUrl: match[0],
-    caption,
-  };
-}
-
-async function downloadGoogleDriveVideo(fileId: string): Promise<Buffer> {
-  const existing = driveVideoDownloads.get(fileId);
-  if (existing) return existing;
-
-  const task = (async () => {
-    const encodedId = encodeURIComponent(fileId);
-    const urls = [
-      `https://drive.usercontent.google.com/download?id=${encodedId}&export=download&confirm=t`,
-      `https://drive.google.com/uc?export=download&confirm=t&id=${encodedId}`,
-    ];
-    let lastError: unknown;
-
-    for (const url of urls) {
-      try {
-        const response = await axios.get<ArrayBuffer>(url, {
-          responseType: "arraybuffer",
-          timeout: 120_000,
-          maxRedirects: 10,
-          maxContentLength: TELEGRAM_VIDEO_MAX_BYTES,
-          maxBodyLength: TELEGRAM_VIDEO_MAX_BYTES,
-          headers: {
-            Accept: "video/mp4,application/octet-stream;q=0.9,*/*;q=0.8",
-            "User-Agent": "Mozilla/5.0 (compatible; GreenleafBot/1.0)",
-          },
-        });
-
-        const buffer = Buffer.from(response.data);
-        const contentType = String(response.headers["content-type"] || "").toLowerCase();
-        const beginning = buffer.subarray(0, 256).toString("utf8").trimStart().toLowerCase();
-
-        if (
-          contentType.includes("text/html") ||
-          beginning.startsWith("<!doctype html") ||
-          beginning.startsWith("<html")
-        ) {
-          throw new Error("Google Drive returned an HTML page instead of the video file");
-        }
-        if (buffer.length === 0) throw new Error("Google Drive returned an empty file");
-        if (buffer.length > TELEGRAM_VIDEO_MAX_BYTES) {
-          throw new Error(`Video is too large for Telegram: ${buffer.length} bytes`);
-        }
-
-        logger.info({ fileId, bytes: buffer.length, contentType }, "Google Drive video downloaded");
-        return buffer;
-      } catch (err) {
-        lastError = err;
-        logger.warn({ err, fileId, url }, "Google Drive video download attempt failed");
-      }
-    }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Failed to download Google Drive video");
-  })().finally(() => {
-    driveVideoDownloads.delete(fileId);
-  });
-
-  driveVideoDownloads.set(fileId, task);
-  return task;
-}
-
-function attachGoogleDriveVideoSender(instance: TelegramBot): void {
-  if (driveVideoSenders.has(instance)) return;
-  driveVideoSenders.add(instance);
-
-  const originalSendMessage = instance.sendMessage.bind(instance);
-  const originalSendVideo = instance.sendVideo.bind(instance);
-
-  instance.sendMessage = (async (
-    chatId: Parameters<TelegramBot["sendMessage"]>[0],
-    text: Parameters<TelegramBot["sendMessage"]>[1],
-    options?: Parameters<TelegramBot["sendMessage"]>[2],
-  ) => {
-    const video = extractDriveVideo(text);
-    if (!video) return originalSendMessage(chatId, text, options);
-
-    const messageOptions = options || {};
-    const common = messageOptions as TelegramBot.SendMessageOptions & {
-      message_thread_id?: number;
-      protect_content?: boolean;
-    };
-
-    const sendVideo = async (caption: string | undefined, includeReplyMarkup: boolean) => {
-      const videoOptions: TelegramBot.SendVideoOptions = {
-        caption,
-        parse_mode: common.parse_mode,
-        disable_notification: common.disable_notification,
-        reply_to_message_id: common.reply_to_message_id,
-        reply_markup: includeReplyMarkup ? common.reply_markup : undefined,
-        supports_streaming: true,
-      };
-
-      const cachedFileId = telegramVideoFileIds.get(video.fileId);
-      if (cachedFileId) {
-        try {
-          return await originalSendVideo(chatId, cachedFileId, videoOptions);
-        } catch (err) {
-          telegramVideoFileIds.delete(video.fileId);
-          logger.warn({ err, fileId: video.fileId }, "Cached Telegram video file_id failed; re-uploading");
-        }
-      }
-
-      const buffer = await downloadGoogleDriveVideo(video.fileId);
-      const sent = await originalSendVideo(
-        chatId,
-        buffer,
-        videoOptions,
-        { filename: `greenleaf-${video.fileId}.mp4`, contentType: "video/mp4" },
-      );
-      const fileId = sent.video?.file_id;
-      if (fileId) telegramVideoFileIds.set(video.fileId, fileId);
-      return sent;
-    };
-
-    try {
-      if (video.caption.length <= 1024) {
-        return await sendVideo(video.caption || undefined, true);
-      }
-
-      const sent = await sendVideo("🎬 Видео", false);
-      await originalSendMessage(chatId, video.caption, messageOptions);
-      return sent;
-    } catch (err) {
-      logger.error(
-        { err, chatId, driveFileId: video.fileId, driveUrl: video.sourceUrl },
-        "Failed to upload Google Drive video to Telegram; falling back to link",
-      );
-      return originalSendMessage(chatId, text, options);
-    }
-  }) as TelegramBot["sendMessage"];
 }
 
 function installShutdownHandlers(): void {
