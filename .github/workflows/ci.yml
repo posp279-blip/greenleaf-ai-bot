@@ -1,0 +1,79 @@
+name: Greenleaf AI Bot CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/friendly-scenario-v2
+      - agent/vk-channel-referrals
+  pull_request:
+    branches:
+      - main
+      - feature/friendly-scenario-v2
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare diagnostics
+        run: mkdir -p ci-logs
+
+      - name: Unit tests
+        id: tests
+        continue-on-error: true
+        run: |
+          pnpm --dir scripts exec tsx --test \
+            "$GITHUB_WORKSPACE/artifacts/api-server/src/bot/flow-v2.test.ts" \
+            "$GITHUB_WORKSPACE/artifacts/api-server/src/vk/protocol.test.ts" \
+            2>&1 | tee ci-logs/tests.log
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: pnpm run typecheck 2>&1 | tee ci-logs/typecheck.log
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: pnpm run build 2>&1 | tee ci-logs/build.log
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenleaf-ci-logs
+          path: ci-logs
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce validation result
+        if: always()
+        env:
+          TESTS: ${{ steps.tests.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          echo "tests=$TESTS typecheck=$TYPECHECK build=$BUILD"
+          test "$TESTS" = success
+          test "$TYPECHECK" = success
+          test "$BUILD" = success

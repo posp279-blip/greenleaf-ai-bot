@@ -6,6 +6,7 @@ import Dashboard from "@/pages/Dashboard";
 import LeadsPage from "@/pages/Leads";
 import PartnersPage from "@/pages/Partners";
 import SessionsPage from "@/pages/Sessions";
+import ScenarioPage from "@/pages/Scenario";
 import VideosPage from "@/pages/Videos";
 import CalculatorPage from "@/pages/Calculator";
 import SettingsPage from "@/pages/Settings";
@@ -27,6 +28,7 @@ const NAV = [
   { path: "/leads", label: "📋 Заявки" },
   { path: "/partners", label: "👥 Партнёры" },
   { path: "/sessions", label: "💬 Диалоги" },
+  { path: "/scenario", label: "📝 Сценарий" },
   { path: "/videos", label: "🎬 Видео" },
   { path: "/calculator", label: "💰 Калькулятор" },
   { path: "/settings", label: "⚙️ Настройки" },
@@ -100,6 +102,7 @@ function Layout() {
             <Route path="/leads" component={LeadsPage} />
             <Route path="/partners" component={PartnersPage} />
             <Route path="/sessions" component={SessionsPage} />
+            <Route path="/scenario" component={ScenarioPage} />
             <Route path="/videos" component={VideosPage} />
             <Route path="/calculator" component={CalculatorPage} />
             <Route path="/settings" component={SettingsPage} />

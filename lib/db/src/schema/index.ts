@@ -7,6 +7,8 @@ import {
   timestamp,
   bigint,
   jsonb,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -24,7 +26,10 @@ export const partnersTable = pgTable("partners", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("partners_telegram_user_id_idx").on(table.telegramUserId),
+  index("partners_sponsor_partner_id_idx").on(table.sponsorPartnerId),
+]);
 
 export const insertPartnerSchema = createInsertSchema(partnersTable).omit({
   id: true,
@@ -37,7 +42,11 @@ export type Partner = typeof partnersTable.$inferSelect;
 // ─── UserSessions ─────────────────────────────────────────────────────────────
 export const userSessionsTable = pgTable("user_sessions", {
   id: serial("id").primaryKey(),
+  // Telegram keeps its native positive ID. VK uses a negative synthetic ID so
+  // legacy Telegram-specific code remains backward compatible and cannot clash.
   telegramUserId: bigint("telegram_user_id", { mode: "number" }).notNull(),
+  platform: text("platform").notNull().default("telegram"),
+  platformUserId: text("platform_user_id"),
   username: text("username"),
   firstName: text("first_name"),
   lastName: text("last_name"),
@@ -54,7 +63,13 @@ export const userSessionsTable = pgTable("user_sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
-});
+}, (table) => [
+  index("user_sessions_telegram_user_id_idx").on(table.telegramUserId),
+  index("user_sessions_partner_id_idx").on(table.partnerId),
+  index("user_sessions_current_stage_idx").on(table.currentStage),
+  index("user_sessions_platform_idx").on(table.platform),
+  uniqueIndex("user_sessions_platform_user_id_uidx").on(table.platform, table.platformUserId),
+]);
 
 export const insertUserSessionSchema = createInsertSchema(
   userSessionsTable,
@@ -72,7 +87,10 @@ export const messagesTable = pgTable("messages", {
   intent: text("intent"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("messages_session_id_idx").on(table.sessionId),
+  index("messages_created_at_idx").on(table.createdAt),
+]);
 
 export const insertMessageSchema = createInsertSchema(messagesTable).omit({
   id: true,
@@ -86,6 +104,7 @@ export const leadsTable = pgTable("leads", {
   id: serial("id").primaryKey(),
   sessionId: integer("session_id").notNull(),
   partnerId: integer("partner_id"),
+  source: text("source").notNull().default("telegram"),
   name: text("name").notNull(),
   contact: text("contact").notNull(),
   comment: text("comment"),
@@ -93,7 +112,13 @@ export const leadsTable = pgTable("leads", {
   convertedPartnerId: integer("converted_partner_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("leads_session_id_idx").on(table.sessionId),
+  index("leads_partner_id_idx").on(table.partnerId),
+  index("leads_source_idx").on(table.source),
+  index("leads_status_idx").on(table.status),
+  index("leads_created_at_idx").on(table.createdAt),
+]);
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({
   id: true,
@@ -208,7 +233,10 @@ export const aiLogsTable = pgTable("ai_logs", {
   success: boolean("success").notNull().default(false),
   error: text("error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("ai_logs_session_id_idx").on(table.sessionId),
+  index("ai_logs_created_at_idx").on(table.createdAt),
+]);
 
 export const insertAiLogSchema = createInsertSchema(aiLogsTable).omit({
   id: true,

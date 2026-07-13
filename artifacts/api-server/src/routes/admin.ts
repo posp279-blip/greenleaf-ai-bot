@@ -8,6 +8,8 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import { isAiAvailable } from "../bot/ai.js";
 import { getBot } from "../bot/index.js";
+import { clearV2ContentCache } from "../bot/content-store-v2.js";
+import { DEFAULT_V2_BLOCKS, type V2ContentKey } from "../bot/content-v2.js";
 
 const router = Router();
 
@@ -229,13 +231,81 @@ router.get("/partners/:id/leads", async (req, res) => {
 // ─── Scenario Blocks ──────────────────────────────────────────────────────────
 router.get("/scenario-blocks", async (_req, res) => {
   const blocks = await db.select().from(scenarioBlocksTable).orderBy(scenarioBlocksTable.stage, scenarioBlocksTable.order);
-  res.json(blocks);
+  res.json(blocks.filter((block) => block.key.startsWith("v2_")));
 });
 
 router.patch("/scenario-blocks/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { shortText, detailedText, isActive, title } = req.body as { shortText?: string; detailedText?: string; isActive?: boolean; title?: string };
-  const [updated] = await db.update(scenarioBlocksTable).set({ shortText, detailedText, isActive, title, updatedAt: new Date() }).where(eq(scenarioBlocksTable.id, id)).returning();
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Некорректный ID блока" }); return; }
+
+  const { shortText, detailedText, isActive, title } = req.body as {
+    shortText?: string;
+    detailedText?: string | null;
+    isActive?: boolean;
+    title?: string;
+  };
+
+  if (shortText !== undefined && !shortText.trim()) {
+    res.status(400).json({ error: "Текст блока не может быть пустым" });
+    return;
+  }
+  if (title !== undefined && !title.trim()) {
+    res.status(400).json({ error: "Название блока не может быть пустым" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(scenarioBlocksTable)
+    .set({
+      shortText: shortText?.trim(),
+      detailedText,
+      isActive,
+      title: title?.trim(),
+      updatedAt: new Date(),
+    })
+    .where(eq(scenarioBlocksTable.id, id))
+    .returning();
+
+  if (!updated || !updated.key.startsWith("v2_")) {
+    res.status(404).json({ error: "Блок сценария не найден" });
+    return;
+  }
+
+  clearV2ContentCache();
+  res.json(updated);
+});
+
+router.post("/scenario-blocks/:id/reset", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Некорректный ID блока" }); return; }
+
+  const block = (await db.select().from(scenarioBlocksTable).where(eq(scenarioBlocksTable.id, id)).limit(1))[0];
+  if (!block || !block.key.startsWith("v2_")) {
+    res.status(404).json({ error: "Блок сценария не найден" });
+    return;
+  }
+
+  const contentKey = block.key.slice(3) as V2ContentKey;
+  const defaultBlock = DEFAULT_V2_BLOCKS[contentKey];
+  if (!defaultBlock) {
+    res.status(400).json({ error: "Для этого блока нет исходной версии" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(scenarioBlocksTable)
+    .set({
+      stage: defaultBlock.stage,
+      title: defaultBlock.title,
+      shortText: defaultBlock.text,
+      detailedText: null,
+      isActive: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(scenarioBlocksTable.id, id))
+    .returning();
+
+  clearV2ContentCache();
   res.json(updated);
 });
 

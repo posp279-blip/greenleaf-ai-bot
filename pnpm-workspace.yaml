@@ -67,6 +67,9 @@ catalog:
   zod: ^3.25.76
 
 autoInstallPeers: false
+dedupePeers: false
+injectWorkspacePackages: false
+peersSuffixMaxLength: 1000
 
 onlyBuiltDependencies:
   - '@swc/core'
