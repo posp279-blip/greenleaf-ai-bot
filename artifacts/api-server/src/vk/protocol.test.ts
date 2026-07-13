@@ -116,6 +116,16 @@ test("VK reply keyboard menu button opens the shared main menu", () => {
   );
 });
 
+test("VK messages without explicit buttons keep the persistent menu", () => {
+  const keyboard = buildVkKeyboard(undefined, false);
+  const button = keyboard?.buttons[0]?.[0];
+
+  assert.equal(keyboard?.inline, false);
+  assert.equal(keyboard?.one_time, false);
+  assert.equal(button?.action.label, "☰ Меню");
+  assert.equal(extractCallbackData(button?.action.payload), "menu_main");
+});
+
 test("shared VK main menu is converted to a persistent bottom keyboard", () => {
   const keyboard = buildVkKeyboard({
     inline_keyboard: [
