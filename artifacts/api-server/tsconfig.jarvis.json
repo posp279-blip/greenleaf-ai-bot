@@ -8,7 +8,9 @@
   "include": [
     "src/bot/jarvisV3.ts",
     "src/bot/jarvisV4.ts",
+    "src/bot/jarvisV5.ts",
     "src/bot/jarvisKnowledge.ts",
-    "src/bot/jarvisKnowledgeV2.ts"
+    "src/bot/jarvisKnowledgeV2.ts",
+    "src/bot/rag/**/*.ts"
   ]
 }
