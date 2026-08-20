@@ -1,5 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { CallbackQuery, Message, SendMessageOptions } from "node-telegram-bot-api";
+import type { CallbackQuery, Message } from "node-telegram-bot-api";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { handleJarvisV11Message, handleJarvisV11Callback, initJarvisV11 } from "./jarvisV11.js";
@@ -10,6 +10,7 @@ const APP_URL = process.env.JARVIS_APP_URL || "https://greenleaf-coach.replit.ap
 const TIME_ZONE = process.env.JARVIS_TIME_ZONE || "Europe/Moscow";
 
 type SendMessageArgs = Parameters<TelegramBot["sendMessage"]>;
+type SendOptions = NonNullable<SendMessageArgs[2]>;
 type QuotaRow = {
   answers_used: number;
   window_started_at: Date | null;
@@ -131,7 +132,7 @@ async function lockedText(userId: number, until: Date | null): Promise<string> {
   return `🔒 ${name}, бесплатные 20 полноценных ответов Джарвиса закончились.\n\nСледующие 20 ответов станут доступны ${formatDate(date)}.\n\nНе хочешь ждать? Переходи в Greenleaf Coach и работай на полную катушку — без ограничений.`;
 }
 
-function lockedOptions(): SendMessageOptions {
+function lockedOptions(): SendOptions {
   return {
     reply_markup: {
       inline_keyboard: [[{ text: "Работать без ограничений в Greenleaf Coach →", url: APP_URL }]],
