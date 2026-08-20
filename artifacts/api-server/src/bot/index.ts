@@ -17,6 +17,42 @@ function isAdminCallback(data: string): boolean {
     data.startsWith("partner_leads_admin_");
 }
 
+async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
+  try {
+    await currentBot.setMyCommands([
+      { command: "start", description: "Начать работу с Джарвисом" },
+      { command: "help", description: "Показать примеры запросов" },
+      { command: "limit", description: "Проверить бесплатный лимит" },
+      { command: "reset", description: "Очистить контекст диалога" },
+      { command: "name", description: "Изменить имя" },
+    ]);
+  } catch (err) {
+    logger.warn({ err }, "Failed to configure Jarvis Telegram commands");
+  }
+
+  // Newer Telegram Bot API clients may expose these methods. They are optional so
+  // deployment remains compatible with the currently pinned node-telegram-bot-api.
+  const identityBot = currentBot as TelegramBot & {
+    setMyName?: (name: string) => Promise<unknown>;
+    setMyShortDescription?: (description: string) => Promise<unknown>;
+    setMyDescription?: (description: string) => Promise<unknown>;
+  };
+
+  try {
+    if (identityBot.setMyName) await identityBot.setMyName("Джарвис");
+    if (identityBot.setMyShortDescription) {
+      await identityBot.setMyShortDescription("Нейропомощник партнёра Greenleaf");
+    }
+    if (identityBot.setMyDescription) {
+      await identityBot.setMyDescription(
+        "Джарвис помогает разбирать переписки, возражения, первые сообщения, встречи и ситуации с партнёрами Greenleaf.",
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "Telegram client could not update Jarvis profile text");
+  }
+}
+
 export async function startBot(webhookUrl?: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -40,6 +76,8 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   } catch (err) {
     logger.error({ err }, "Failed to get bot info");
   }
+
+  await configureJarvisIdentity(bot);
 
   if (webhookUrl) {
     try {
