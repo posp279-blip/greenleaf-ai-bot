@@ -16,11 +16,17 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Production URL takes priority, fallback to dev domain
+// Public host resolution for Railway first, then the legacy Replit variables.
+const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN || "";
 const appUrl = process.env.REPLIT_APP_URL || "";
 const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
 const domains = process.env.REPLIT_DOMAINS || "";
-const host = appUrl.replace(/^https?:\/\//, "") || domains.split(",")[0] || devDomain || "";
+const host =
+  railwayDomain ||
+  appUrl.replace(/^https?:\/\//, "") ||
+  domains.split(",")[0] ||
+  devDomain ||
+  "";
 const webhookUrl = host ? `https://${host}/api/bot/webhook` : undefined;
 
 app.listen(port, async (err?: Error) => {
@@ -32,12 +38,12 @@ app.listen(port, async (err?: Error) => {
   logger.info({ port, webhookUrl }, "Server listening");
   await startBot(webhookUrl);
 
-  // Keep-alive ping to prevent Replit autoscale sleep
+  // Local self-check. Harmless on Railway and keeps compatibility with the old runtime.
   const keepAliveUrl = `http://localhost:${port}/api/healthz`;
   setInterval(() => {
     fetch(keepAliveUrl).catch(() => {
-      // Ignore errors — if server is down, it'll restart anyway
+      // Ignore errors — platform health/restart policy handles process failures.
     });
   }, 45_000);
-  logger.info({ url: keepAliveUrl, intervalSec: 45 }, "Keep-alive ping started");
+  logger.info({ url: keepAliveUrl, intervalSec: 45 }, "Local health ping started");
 });
