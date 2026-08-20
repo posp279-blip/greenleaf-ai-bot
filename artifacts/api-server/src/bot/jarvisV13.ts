@@ -8,17 +8,20 @@ const SITE_URL = process.env.JARVIS_SITE_URL || "https://greenleaf-podbor.ru";
 const CTA_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 type SendMessageArgs = Parameters<TelegramBot["sendMessage"]>;
+type SendOptions = NonNullable<SendMessageArgs[2]>;
 type CtaKind = "product" | "show_candidate" | "registration" | "company";
-type CtaDecision = { kind: CtaKind; buttonText: string } | null;
+type CtaDecision = { kind: CtaKind; buttonText: string; bridge: string } | null;
+type LatestAssistant = { counted: boolean };
 
 let schemaReady = false;
 
 const SYSTEM_COPY_RE = /^(?:🔒|Осталось\s+\d+|Остался\s+\d+|Доступно\s+\d+\s+из\s+20|Привет\s|Контекст очищен|Хорошо\. Как мне|Сначала напиши|Напиши только имя|Сейчас не получилось|Что-то пошло не так)/iu;
-const PRODUCT_RE = /(?:продукц|товар|средств|каталог|подборк|что\s+посоветовать|что\s+подобрать|цена|стоимост|уход|стирк|кухн|гигиен)/iu;
-const SEND_SHOW_RE = /(?:что\s+(?:ему|ей|человеку|кандидату)\s+(?:отправить|скинуть|показать)|что\s+отправить|что\s+скинуть|что\s+показать|после\s+(?:разговора|встречи|презентации)|пусть\s+(?:сам|сама)\s+посмотр|самостоятельно\s+(?:посмотр|ознаком)|одной\s+ссылк|персональн(?:ая|ую)\s+страниц)/iu;
-const REGISTRATION_RE = /(?:регистрац|зарегистрир|оформить\s+партн|стать\s+партн|готов\s+регистр)/iu;
-const COMPANY_RE = /(?:что\s+такое\s+greenleaf|о\s+компании|про\s+компани|возможност|доход|бизнес|партн[её]рств)/iu;
-const PERSON_RE = /(?:кандидат|человек|знаком|клиент|нович|он\s|она\s|ему|ей)/iu;
+const PRODUCT_RE = /(?:продукц|товар|средств|каталог|подборк|что\s+посоветовать|что\s+подобрать|цены?\s+на\s+(?:продукц|товар)|ассортимент)/iu;
+const SEND_SHOW_RE = /(?:что\s+(?:ему|ей|человеку|кандидату)\s+(?:отправить|скинуть|показать|дать)|что\s+(?:отправить|скинуть|показать)|после\s+(?:разговора|встречи|презентации).{0,80}(?:отправ|дать|показ)|пусть\s+(?:сам|сама)\s+посмотр|самостоятельно\s+(?:посмотр|ознаком)|одной\s+ссылк|где\s+(?:ему|ей|человеку|кандидату)?\s*посмотреть)/iu;
+const REGISTRATION_RE = /(?:регистрац|зарегистрир|оформить\s+партн|стать\s+партн|готов\s+регистр|куда\s+вести\s+на\s+регистрац)/iu;
+const COMPANY_RE = /(?:что\s+такое\s+greenleaf|о\s+компании|про\s+компани|показать\s+компани|как\s+показать\s+greenleaf|возможност(?:и|ях)\s+greenleaf)/iu;
+const PERSON_RE = /(?:кандидат|человек|знаком|клиент|нович|ему|ей)/iu;
+const OBJECTION_ONLY_RE = /(?:пирамид|дорого|нет\s+времени|надо\s+подумать|неинтерес|не\s+интерес)/iu;
 
 async function ensureSchema(): Promise<void> {
   if (schemaReady) return;
@@ -34,24 +37,41 @@ async function ensureSchema(): Promise<void> {
 
 export function decideJarvisSiteCta(userText: string, answerText: string): CtaDecision {
   const user = userText.trim();
-  const combined = `${user}\n${answerText}`;
-
   if (!user || user.startsWith("/") || answerText.length < 80 || SYSTEM_COPY_RE.test(answerText)) return null;
 
-  if (REGISTRATION_RE.test(combined)) {
-    return { kind: "registration", buttonText: "📝 Перейти к регистрации на сайте →" };
+  // Возражение само по себе не повод уводить человека на сайт — сначала надо нормально разобрать возражение.
+  if (OBJECTION_ONLY_RE.test(user) && !SEND_SHOW_RE.test(user) && !REGISTRATION_RE.test(user)) return null;
+
+  if (REGISTRATION_RE.test(user)) {
+    return {
+      kind: "registration",
+      buttonText: "✅ Посмотреть путь на сайте →",
+      bridge: "✅ Когда человек готов идти дальше, персональная страница помогает не потерять его между разговором и следующим шагом. Ниже можно посмотреть, как это устроено.",
+    };
   }
 
-  if (PRODUCT_RE.test(combined) && (PERSON_RE.test(combined) || SEND_SHOW_RE.test(combined))) {
-    return { kind: "product", buttonText: "🌿 Подобрать продукцию на сайте →" };
+  if (PRODUCT_RE.test(user) && (PERSON_RE.test(user) || SEND_SHOW_RE.test(user))) {
+    return {
+      kind: "product",
+      buttonText: "🌿 Посмотреть подбор на сайте →",
+      bridge: "🌿 В такой ситуации удобно подключить сайт-каталог: продукцию и подборку проще показать одной страницей, чем пересылать карточки вручную.",
+    };
   }
 
-  if (SEND_SHOW_RE.test(combined)) {
-    return { kind: "show_candidate", buttonText: "🌐 Показать сайт кандидату →" };
+  if (SEND_SHOW_RE.test(user)) {
+    return {
+      kind: "show_candidate",
+      buttonText: "🌐 Посмотреть персональную страницу →",
+      bridge: "💡 Здесь как раз полезен персональный сайт: вместо десятка материалов кандидат получает одну страницу, где может спокойно всё посмотреть сам. Ниже можно посмотреть, как это работает.",
+    };
   }
 
-  if (COMPANY_RE.test(combined) && PERSON_RE.test(combined)) {
-    return { kind: "company", buttonText: "🌐 Дать человеку посмотреть сайт →" };
+  if (COMPANY_RE.test(user) && PERSON_RE.test(user)) {
+    return {
+      kind: "company",
+      buttonText: "🌐 Посмотреть, как работает сайт →",
+      bridge: "🌐 Если человеку удобнее сначала посмотреть всё самостоятельно, персональная страница хорошо продолжает разговор — без длинной переписки и лишнего давления.",
+    };
   }
 
   return null;
@@ -62,7 +82,7 @@ function trackedUrl(kind: CtaKind): string {
     const url = new URL(SITE_URL);
     url.searchParams.set("utm_source", "jarvis");
     url.searchParams.set("utm_medium", "telegram_bot");
-    url.searchParams.set("utm_campaign", "smart_cta");
+    url.searchParams.set("utm_campaign", "smart_site_cta");
     url.searchParams.set("utm_content", kind);
     return url.toString();
   } catch {
@@ -80,6 +100,16 @@ async function canShowCta(userId: number): Promise<boolean> {
   return !last || Date.now() - last.getTime() >= CTA_COOLDOWN_MS;
 }
 
+async function latestAssistantCounted(userId: number): Promise<boolean> {
+  const result = await pool.query<LatestAssistant>(
+    `SELECT counted FROM jarvis_messages
+     WHERE telegram_user_id=$1 AND role='assistant'
+     ORDER BY id DESC LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0]?.counted === true;
+}
+
 async function rememberCta(userId: number, kind: CtaKind): Promise<void> {
   await ensureSchema();
   await pool.query(
@@ -91,6 +121,27 @@ async function rememberCta(userId: number, kind: CtaKind): Promise<void> {
   );
 }
 
+function addBridge(text: string, bridge: string): string {
+  if (/greenleaf-podbor|сайт-каталог|персональн(?:ый|ая)\s+(?:сайт|страниц)/iu.test(text)) return text;
+  return `${text.trim()}\n\n${bridge}`;
+}
+
+function withSiteButton(options: SendOptions | undefined, decision: NonNullable<CtaDecision>): SendOptions {
+  const base = (options ? { ...options } : {}) as SendOptions & { reply_markup?: any };
+  const existingRows: any[][] = base.reply_markup && Array.isArray(base.reply_markup.inline_keyboard)
+    ? base.reply_markup.inline_keyboard
+    : [];
+
+  base.reply_markup = {
+    ...(base.reply_markup || {}),
+    inline_keyboard: [
+      ...existingRows,
+      [{ text: decision.buttonText, url: trackedUrl(decision.kind) }],
+    ],
+  };
+  return base;
+}
+
 function withSiteCta(bot: TelegramBot, userId: number, userText: string): TelegramBot {
   let handled = false;
   return new Proxy(bot, {
@@ -98,19 +149,22 @@ function withSiteCta(bot: TelegramBot, userId: number, userText: string): Telegr
       if (property === "sendMessage") {
         return async (...args: SendMessageArgs) => {
           const [chatId, text, options] = args;
-          if (handled || options?.reply_markup) return target.sendMessage(chatId, text, options);
+          if (handled || SYSTEM_COPY_RE.test(text)) return target.sendMessage(chatId, text, options);
 
           const decision = decideJarvisSiteCta(userText, text);
-          if (!decision || !(await canShowCta(userId))) return target.sendMessage(chatId, text, options);
+          if (!decision) return target.sendMessage(chatId, text, options);
+
+          // CTA показывается только после полноценного ответа, а не после бесплатного наводящего вопроса.
+          if (!(await latestAssistantCounted(userId))) return target.sendMessage(chatId, text, options);
+          if (!(await canShowCta(userId))) return target.sendMessage(chatId, text, options);
+
+          // Не смешиваем CTA сайта с уже существующей технической кнопкой (например, блокировкой в Greenleaf Coach).
+          if (options?.reply_markup) return target.sendMessage(chatId, text, options);
 
           handled = true;
-          const nextOptions = {
-            ...(options || {}),
-            reply_markup: {
-              inline_keyboard: [[{ text: decision.buttonText, url: trackedUrl(decision.kind) }]],
-            },
-          };
-          const sent = await target.sendMessage(chatId, text, nextOptions);
+          const finalText = addBridge(text, decision.bridge);
+          const nextOptions = withSiteButton(options, decision);
+          const sent = await target.sendMessage(chatId, finalText, nextOptions);
           await rememberCta(userId, decision.kind);
           logger.info({ userId, kind: decision.kind }, "Jarvis v13 contextual website CTA shown");
           return sent;
