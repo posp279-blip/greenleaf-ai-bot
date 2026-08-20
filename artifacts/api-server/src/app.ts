@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { handleWebhookUpdate } from "./bot/index.js";
+import { getJarvisSitePublicKeyB64 } from "./bot/jarvisSiteIdentity.js";
 
 const app: Express = express();
 
@@ -39,6 +40,19 @@ app.post("/api/bot/webhook", async (req: Request, res: Response) => {
     await handleWebhookUpdate(req.body);
   } catch (err) {
     logger.error({ err }, "Webhook update handler error");
+  }
+});
+
+// Public verification key for Greenleaf Select. The private key never leaves Jarvis PostgreSQL.
+app.get("/api/bot/site-integration-public-key", async (_req: Request, res: Response) => {
+  try {
+    const publicKey = await getJarvisSitePublicKeyB64();
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.json({ algorithm: "Ed25519", publicKey });
+  } catch (err) {
+    logger.error({ err }, "Failed to expose Jarvis site integration public key");
+    res.status(503).json({ error: "integration key unavailable" });
   }
 });
 
