@@ -1,13 +1,21 @@
 import TelegramBot from "node-telegram-bot-api";
 import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
-import { handleMessage, handleCallback, handleAdminCallback } from "./engine.js";
+import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
+import { handleJarvisMessage, handleJarvisCallback, initJarvis } from "./jarvis.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 
 let bot: TelegramBot | null = null;
+
+function isAdminCallback(data: string): boolean {
+  return data.startsWith("admin_") ||
+    data.startsWith("lead_status_") ||
+    data.startsWith("lead_to_partner_") ||
+    data.startsWith("toggle_") ||
+    data.startsWith("partner_leads_admin_");
+}
 
 export async function startBot(webhookUrl?: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -16,12 +24,12 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     return;
   }
 
-  // Run DB migrations/seed
+  // Keep the old application data intact, but switch all user dialogue to Jarvis.
   await seedDatabase();
+  await initJarvis();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
 
-  // Store bot username in settings
   try {
     const me = await bot.getMe();
     if (me.username) {
@@ -33,7 +41,6 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     logger.error({ err }, "Failed to get bot info");
   }
 
-  // If webhook URL is provided, use webhook mode; otherwise fallback to polling
   if (webhookUrl) {
     try {
       await bot.setWebHook(webhookUrl);
@@ -43,22 +50,19 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     }
   }
 
-  // Check if webhook is actually active
   const webhookInfo = await bot.getWebHookInfo();
   if (!webhookInfo.url || webhookInfo.url !== webhookUrl) {
-    // Webhook not active — use polling
-    if (webhookUrl) {
-      logger.warn("Webhook not active — falling back to polling");
-    }
+    if (webhookUrl) logger.warn("Webhook not active — falling back to polling");
+
     bot = new TelegramBot(token, { polling: true });
 
     bot.on("message", async (msg) => {
       try {
-        await handleMessage(bot!, msg);
+        await handleJarvisMessage(bot!, msg);
       } catch (err) {
-        logger.error({ err, chatId: msg.chat.id }, "Error handling message");
+        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis message");
         try {
-          await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй ещё раз или нажми /start");
+          await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй отправить сообщение ещё раз.");
         } catch {}
       }
     });
@@ -66,12 +70,10 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     bot.on("callback_query", async (query) => {
       try {
         const data = query.data || "";
-        if (data.startsWith("admin_") || data.startsWith("lead_status_") ||
-            data.startsWith("lead_to_partner_") || data.startsWith("toggle_") ||
-            data.startsWith("partner_leads_admin_")) {
+        if (isAdminCallback(data)) {
           await handleAdminCallback(bot!, query);
         } else {
-          await handleCallback(bot!, query);
+          await handleJarvisCallback(bot!, query);
         }
       } catch (err) {
         logger.error({ err }, "Error handling callback query");
@@ -82,9 +84,9 @@ export async function startBot(webhookUrl?: string): Promise<void> {
       logger.error({ err }, "Telegram polling error");
     });
 
-    logger.info("Telegram bot started in polling mode");
+    logger.info("Telegram Jarvis bot started in polling mode");
   } else {
-    logger.info("Telegram bot started in webhook mode");
+    logger.info("Telegram Jarvis bot started in webhook mode");
   }
 }
 
@@ -101,18 +103,16 @@ export async function handleWebhookUpdate(update: Update): Promise<void> {
 
   try {
     if (update.message) {
-      await handleMessage(b, update.message);
+      await handleJarvisMessage(b, update.message);
     } else if (update.callback_query) {
       const data = update.callback_query.data || "";
-      if (data.startsWith("admin_") || data.startsWith("lead_status_") ||
-          data.startsWith("lead_to_partner_") || data.startsWith("toggle_") ||
-          data.startsWith("partner_leads_admin_")) {
+      if (isAdminCallback(data)) {
         await handleAdminCallback(b, update.callback_query);
       } else {
-        await handleCallback(b, update.callback_query);
+        await handleJarvisCallback(b, update.callback_query);
       }
     }
   } catch (err) {
-    logger.error({ err }, "Error handling webhook update");
+    logger.error({ err }, "Error handling Jarvis webhook update");
   }
 }
