@@ -30,8 +30,6 @@ async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
     logger.warn({ err }, "Failed to configure Jarvis Telegram commands");
   }
 
-  // node-telegram-bot-api v1 mirrors the modern Bot API identity methods with
-  // a single params object. Keep them optional for compatibility with older clients.
   const identityBot = currentBot as TelegramBot & {
     setMyName?: (params: { name: string }) => Promise<unknown>;
     setMyShortDescription?: (params: { short_description: string }) => Promise<unknown>;
@@ -66,7 +64,6 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     return;
   }
 
-  // Keep the old application data intact, but switch all user dialogue to Jarvis.
   await seedDatabase();
   await initJarvis();
 
@@ -101,7 +98,13 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     }
   }
 
-  const webhookInfo = await bot.getWebHookInfo();
+  const infoBot = bot as TelegramBot & {
+    getWebhookInfo?: () => Promise<{ url?: string }>;
+  };
+  const webhookInfo = infoBot.getWebhookInfo
+    ? await infoBot.getWebhookInfo()
+    : await bot.getWebHookInfo();
+
   if (!webhookInfo.url || webhookInfo.url !== webhookUrl) {
     if (webhookUrl) logger.warn("Webhook not active — falling back to polling");
 
