@@ -34,7 +34,7 @@ function rememberedPersonName(history: RecentMessage[]): string | null {
   const joined = history.filter((item) => item.role === "user").map((item) => item.content).join("\n");
   const patterns = [
     /(?:кандидат(?:а)?\s+зовут|е[её]\s+зовут|его\s+зовут)\s+([А-ЯЁ][а-яё]{2,24})/iu,
-    /\b([А-ЯЁ][а-яё]{2,24})\s+[-—]\s+(?:кандидат|партн[её]р|бывш)/iu,
+    /([А-ЯЁ][а-яё]{2,24})\s+[-—]\s+(?:кандидат|партн[её]р|бывш)/iu,
   ];
   for (const pattern of patterns) {
     const match = joined.match(pattern);
@@ -44,7 +44,11 @@ function rememberedPersonName(history: RecentMessage[]): string | null {
 }
 
 function refersToKnownPerson(current: string): boolean {
-  return /\b(?:она|он|ей|ему|её|его)\b/iu.test(current);
+  return /(?:^|[\s«"(])(?:она|он|ей|ему|её|его)(?=$|[\s,.:;!?»")])/iu.test(current);
+}
+
+function containsName(text: string, name: string): boolean {
+  return text.toLocaleLowerCase("ru-RU").includes(name.toLocaleLowerCase("ru-RU"));
 }
 
 function memoryFallback(name: string): string {
@@ -78,7 +82,7 @@ function wrapRegressionGuards(
             } else if (
               name &&
               refersToKnownPerson(currentText) &&
-              !new RegExp(`\\b${name}\\b`, "iu").test(text)
+              !containsName(text, name)
             ) {
               finalText = memoryFallback(name);
               logger.info({ name }, "Jarvis v11 restored remembered person context");
