@@ -39,30 +39,30 @@ export function decideJarvisSiteCta(userText: string, answerText: string): CtaDe
   const user = userText.trim();
   if (!user || user.startsWith("/") || answerText.length < 80 || SYSTEM_COPY_RE.test(answerText)) return null;
 
-  // Возражение само по себе не повод уводить человека на сайт — сначала надо нормально разобрать возражение.
+  // Возражение само по себе не повод уводить партнёра на сайт: сначала Джарвис должен нормально разобрать ситуацию.
   if (OBJECTION_ONLY_RE.test(user) && !SEND_SHOW_RE.test(user) && !REGISTRATION_RE.test(user)) return null;
 
   if (REGISTRATION_RE.test(user)) {
     return {
       kind: "registration",
-      buttonText: "✅ Посмотреть путь на сайте →",
-      bridge: "✅ Когда человек готов идти дальше, персональная страница помогает не потерять его между разговором и следующим шагом. Ниже можно посмотреть, как это устроено.",
+      buttonText: "✅ Посмотреть, как сайт ведёт к следующему шагу →",
+      bridge: "✅ Когда человек уже готов идти дальше, персональный сайт партнёра помогает не потерять его между разговором и следующим шагом. Ниже можно посмотреть, как это устроено.",
     };
   }
 
   if (PRODUCT_RE.test(user) && (PERSON_RE.test(user) || SEND_SHOW_RE.test(user))) {
     return {
       kind: "product",
-      buttonText: "🌿 Посмотреть подбор на сайте →",
-      bridge: "🌿 В такой ситуации удобно подключить сайт-каталог: продукцию и подборку проще показать одной страницей, чем пересылать карточки вручную.",
+      buttonText: "🌿 Посмотреть подбор продукции на сайте →",
+      bridge: "🌿 В такой ситуации удобно подключить сайт-каталог: продукцию и подборку проще показать одной страницей, чем пересылать карточки вручную. Ниже можно посмотреть, как это работает.",
     };
   }
 
   if (SEND_SHOW_RE.test(user)) {
     return {
       kind: "show_candidate",
-      buttonText: "🌐 Посмотреть персональную страницу →",
-      bridge: "💡 Здесь как раз полезен персональный сайт: вместо десятка материалов кандидат получает одну страницу, где может спокойно всё посмотреть сам. Ниже можно посмотреть, как это работает.",
+      buttonText: "🌐 Посмотреть, как работает сайт партнёра →",
+      bridge: "💡 Здесь как раз полезен персональный сайт партнёра: вместо десятка материалов кандидат получает одну понятную страницу и может спокойно посмотреть информацию сам. Ниже можно увидеть, как это устроено.",
     };
   }
 
@@ -70,7 +70,7 @@ export function decideJarvisSiteCta(userText: string, answerText: string): CtaDe
     return {
       kind: "company",
       buttonText: "🌐 Посмотреть, как работает сайт →",
-      bridge: "🌐 Если человеку удобнее сначала посмотреть всё самостоятельно, персональная страница хорошо продолжает разговор — без длинной переписки и лишнего давления.",
+      bridge: "🌐 Если человеку удобнее сначала посмотреть всё самостоятельно, персональный сайт партнёра хорошо продолжает разговор — без длинной переписки и лишнего давления. Ниже можно посмотреть, как это работает.",
     };
   }
 
@@ -158,7 +158,7 @@ function withSiteCta(bot: TelegramBot, userId: number, userText: string): Telegr
           if (!(await latestAssistantCounted(userId))) return target.sendMessage(chatId, text, options);
           if (!(await canShowCta(userId))) return target.sendMessage(chatId, text, options);
 
-          // Не смешиваем CTA сайта с уже существующей технической кнопкой (например, блокировкой в Greenleaf Coach).
+          // Не смешиваем CTA сайта с техническими кнопками квоты/Greenleaf Coach.
           if (options?.reply_markup) return target.sendMessage(chatId, text, options);
 
           handled = true;
