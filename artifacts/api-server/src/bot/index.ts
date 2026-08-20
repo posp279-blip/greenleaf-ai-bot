@@ -4,10 +4,12 @@ import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
 import { handleJarvisV8Message, handleJarvisV8Callback, initJarvisV8 } from "./jarvisV8.js";
+import { runJarvisSelfAudit } from "./jarvisSelfAudit.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
 let bot: TelegramBot | null = null;
+let auditScheduled = false;
 
 function isAdminCallback(data: string): boolean {
   return data.startsWith("admin_") ||
@@ -15,6 +17,16 @@ function isAdminCallback(data: string): boolean {
     data.startsWith("lead_to_partner_") ||
     data.startsWith("toggle_") ||
     data.startsWith("partner_leads_admin_");
+}
+
+function scheduleAuditIfRequested(): void {
+  if (process.env.JARVIS_AUDIT_ON_START !== "1" || auditScheduled) return;
+  auditScheduled = true;
+  setTimeout(() => {
+    void runJarvisSelfAudit().catch((err) => {
+      logger.error({ err, audit: "JARVIS_PRE_RELEASE" }, "AUDIT unhandled failure");
+    });
+  }, 1500);
 }
 
 async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
@@ -119,6 +131,8 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   } else {
     logger.info("Telegram Jarvis v8 started in webhook mode");
   }
+
+  scheduleAuditIfRequested();
 }
 
 export function getBot(): TelegramBot | null {
