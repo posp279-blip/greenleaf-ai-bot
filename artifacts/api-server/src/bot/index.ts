@@ -73,6 +73,8 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
   await seedDatabase();
   await initJarvisV8();
+  // Audit is intentionally independent of Telegram network calls.
+  scheduleAuditIfRequested();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
 
