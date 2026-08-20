@@ -3,7 +3,7 @@ import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
-import { handleJarvisMessage, handleJarvisCallback, initJarvis } from "./jarvis.js";
+import { handleJarvisMessage, handleJarvisCallback, initJarvis } from "./jarvisV2.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
