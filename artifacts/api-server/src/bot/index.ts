@@ -3,7 +3,7 @@ import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
-import { handleJarvisV12Message, handleJarvisV12Callback, initJarvisV12 } from "./jarvisV12.js";
+import { handleJarvisV13Message, handleJarvisV13Callback, initJarvisV13 } from "./jarvisV13.js";
 import { runJarvisV12SelfAudit } from "./jarvisSelfAuditV12.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
@@ -52,7 +52,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   if (!token) { logger.warn("TELEGRAM_BOT_TOKEN not set — bot will not start"); return; }
 
   await seedDatabase();
-  await initJarvisV12();
+  await initJarvisV13();
   scheduleAudit();
   bot = new TelegramBot(token, { polling: false, webHook: false });
 
@@ -80,21 +80,21 @@ export async function startBot(webhookUrl?: string): Promise<void> {
     if (webhookUrl) logger.warn("Webhook not active — falling back to polling");
     bot = new TelegramBot(token, { polling: true });
     bot.on("message", async (msg) => {
-      try { await handleJarvisV12Message(bot!, msg); }
+      try { await handleJarvisV13Message(bot!, msg); }
       catch (err) {
-        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v12 message");
+        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v13 message");
         try { await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй отправить сообщение ещё раз."); } catch {}
       }
     });
     bot.on("callback_query", async (query) => {
       try {
         const data = query.data || "";
-        if (isAdminCallback(data)) await handleAdminCallback(bot!, query); else await handleJarvisV12Callback(bot!, query);
+        if (isAdminCallback(data)) await handleAdminCallback(bot!, query); else await handleJarvisV13Callback(bot!, query);
       } catch (err) { logger.error({ err }, "Error handling callback query"); }
     });
     bot.on("polling_error", (err) => logger.error({ err }, "Telegram polling error"));
-    logger.info("Telegram Jarvis v12 started in polling mode");
-  } else logger.info("Telegram Jarvis v12 started in webhook mode");
+    logger.info("Telegram Jarvis v13 started in polling mode");
+  } else logger.info("Telegram Jarvis v13 started in webhook mode");
 }
 
 export function getBot(): TelegramBot | null { return bot; }
@@ -103,10 +103,10 @@ export async function handleWebhookUpdate(update: Update): Promise<void> {
   const b = getBot();
   if (!b) { logger.warn("Bot not initialized — skipping webhook update"); return; }
   try {
-    if (update.message) await handleJarvisV12Message(b, update.message);
+    if (update.message) await handleJarvisV13Message(b, update.message);
     else if (update.callback_query) {
       const data = update.callback_query.data || "";
-      if (isAdminCallback(data)) await handleAdminCallback(b, update.callback_query); else await handleJarvisV12Callback(b, update.callback_query);
+      if (isAdminCallback(data)) await handleAdminCallback(b, update.callback_query); else await handleJarvisV13Callback(b, update.callback_query);
     }
-  } catch (err) { logger.error({ err }, "Error handling Jarvis v12 webhook update"); }
+  } catch (err) { logger.error({ err }, "Error handling Jarvis v13 webhook update"); }
 }
