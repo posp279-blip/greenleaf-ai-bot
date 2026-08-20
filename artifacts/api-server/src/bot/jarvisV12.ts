@@ -1,5 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { CallbackQuery, Message } from "node-telegram-bot-api";
+import type { CallbackQuery, Message, SendMessageOptions } from "node-telegram-bot-api";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { handleJarvisV11Message, handleJarvisV11Callback, initJarvisV11 } from "./jarvisV11.js";
@@ -71,7 +71,6 @@ async function normalizeQuota(userId: number): Promise<QuotaStatus> {
     let cooldownStarted = row?.cooldown_started_at ? new Date(row.cooldown_started_at) : null;
 
     if (used < LIMIT) {
-      // A partially used pack never expires. Old rolling-window markers are removed.
       if (row?.window_started_at || row?.locked_until || row?.cooldown_started_at) {
         await cx.query(
           `UPDATE jarvis_usage
@@ -84,7 +83,6 @@ async function normalizeQuota(userId: number): Promise<QuotaStatus> {
       return { used, remaining: LIMIT - used, locked: false, lockedUntil: null };
     }
 
-    // Exhausted legacy rows did not have cooldown_started_at. Start the correct 7-day cooldown now.
     if (!cooldownStarted) {
       cooldownStarted = now;
       lockedUntil = new Date(now.getTime() + COOLDOWN_MS);
@@ -133,7 +131,7 @@ async function lockedText(userId: number, until: Date | null): Promise<string> {
   return `🔒 ${name}, бесплатные 20 полноценных ответов Джарвиса закончились.\n\nСледующие 20 ответов станут доступны ${formatDate(date)}.\n\nНе хочешь ждать? Переходи в Greenleaf Coach и работай на полную катушку — без ограничений.`;
 }
 
-function lockedOptions(): TelegramBot.SendMessageOptions {
+function lockedOptions(): SendMessageOptions {
   return {
     reply_markup: {
       inline_keyboard: [[{ text: "Работать без ограничений в Greenleaf Coach →", url: APP_URL }]],
@@ -203,7 +201,6 @@ export async function handleJarvisV12Message(bot: TelegramBot, msg: Message): Pr
     return;
   }
 
-  // Normalize legacy rolling-window state before any quota check in the older core.
   await normalizeQuota(userId);
 
   const text = msg.text?.trim() || "";
