@@ -10,7 +10,6 @@ const LOCK_OR_SYSTEM_RE = /^(?:🔒|Осталось\s+\d+|Остался\s+\d+|
 const READY_QUOTE_RE = /(?:«[^»]{18,}»|"[^"\n]{18,}")/u;
 
 type SendMessageArgs = Parameters<TelegramBot["sendMessage"]>;
-
 type RecentMessage = { role: string; content: string };
 
 async function recentHistory(userId: number, limit = 10): Promise<RecentMessage[]> {
@@ -52,23 +51,40 @@ function memoryFallback(name: string): string {
   return `Здесь ${name} не говорит «нет» — она говорит, что сейчас не готова платить такую сумму. Я бы не убеждал и не доказывал ценность наугад.\n\nНапиши так:\n\n«${name}, понимаю. Скажи, тебя сейчас останавливает сама сумма или ты пока не видишь, за счёт чего такой старт имеет смысл?»\n\nПо её ответу уже будет понятно, что разбирать дальше. Пришли ответ сюда — продолжим.`;
 }
 
-function wrapMemoryGuard(bot: TelegramBot, currentText: string, name: string | null): TelegramBot {
+function coldFallback(): string {
+  return `Лично вы не знакомы, поэтому здесь не нужен резкий заход в Greenleaf. Лучше опереться на реальный повод — его комментарий в группе — и сначала открыть обычный диалог.\n\nЯ бы написал так:\n\n«Привет! Увидел твой комментарий в группе — зацепила мысль, которую ты написал. Решил познакомиться 🙂 Как ты сам пришёл к такому взгляду?»\n\nНе презентуй Greenleaf в первом сообщении. Сначала дождись нормального ответа и продолжи разговор по теме комментария.`;
+}
+
+function wrapRegressionGuards(
+  bot: TelegramBot,
+  currentText: string,
+  name: string | null,
+  enoughCold: boolean,
+): TelegramBot {
+  let firstSubstantiveHandled = false;
   return new Proxy(bot, {
     get(target, property, receiver) {
       if (property === "sendMessage") {
         return async (...args: SendMessageArgs) => {
           const [chatId, text, options] = args;
           let finalText = text;
-          if (
-            name &&
-            refersToKnownPerson(currentText) &&
-            !LOCK_OR_SYSTEM_RE.test(text) &&
-            READY_QUOTE_RE.test(text) &&
-            !new RegExp(`\\b${name}\\b`, "iu").test(text)
-          ) {
-            finalText = memoryFallback(name);
-            logger.info({ name }, "Jarvis v11 restored remembered person context");
+          const system = LOCK_OR_SYSTEM_RE.test(text);
+
+          if (!system && !firstSubstantiveHandled) {
+            firstSubstantiveHandled = true;
+            if (enoughCold && !READY_QUOTE_RE.test(text)) {
+              finalText = coldFallback();
+              logger.info("Jarvis v11 normalized sufficient cold-context reply to ready message");
+            } else if (
+              name &&
+              refersToKnownPerson(currentText) &&
+              !new RegExp(`\\b${name}\\b`, "iu").test(text)
+            ) {
+              finalText = memoryFallback(name);
+              logger.info({ name }, "Jarvis v11 restored remembered person context");
+            }
           }
+
           return target.sendMessage(chatId, finalText, options);
         };
       }
@@ -112,7 +128,7 @@ export async function handleJarvisV11Message(bot: TelegramBot, msg: Message): Pr
     : originalText;
 
   const effectiveMsg = effectiveText === originalText ? msg : ({ ...msg, text: effectiveText } as Message);
-  const guardedBot = wrapMemoryGuard(bot, originalText, rememberedName);
+  const guardedBot = wrapRegressionGuards(bot, originalText, rememberedName, enoughCold);
 
   await handleJarvisV10Message(guardedBot, effectiveMsg);
 
