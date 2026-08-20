@@ -3,7 +3,7 @@ import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
-import { handleJarvisMessage, handleJarvisCallback, initJarvis } from "./jarvisV4.js";
+import { handleJarvisV5Message, handleJarvisV5Callback, initJarvisV5 } from "./jarvisV5.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
@@ -37,18 +37,13 @@ async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
   };
 
   try {
-    if (identityBot.setMyName) {
-      await identityBot.setMyName({ name: "Джарвис" });
-    }
+    if (identityBot.setMyName) await identityBot.setMyName({ name: "Джарвис" });
     if (identityBot.setMyShortDescription) {
-      await identityBot.setMyShortDescription({
-        short_description: "Нейропомощник партнёра Greenleaf",
-      });
+      await identityBot.setMyShortDescription({ short_description: "Нейропомощник партнёра Greenleaf" });
     }
     if (identityBot.setMyDescription) {
       await identityBot.setMyDescription({
-        description:
-          "Джарвис помогает разбирать переписки, возражения, первые сообщения, встречи и ситуации с партнёрами Greenleaf.",
+        description: "Джарвис помогает разбирать переписки, возражения, первые сообщения, встречи и ситуации с партнёрами Greenleaf.",
       });
     }
     logger.info("Telegram bot profile configured as Jarvis");
@@ -65,7 +60,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   }
 
   await seedDatabase();
-  await initJarvis();
+  await initJarvisV5();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
 
@@ -84,63 +79,45 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
   if (webhookUrl) {
     try {
-      const webhookBot = bot as TelegramBot & {
-        setWebhook?: (url: string) => Promise<unknown>;
-      };
-      if (webhookBot.setWebhook) {
-        await webhookBot.setWebhook(webhookUrl);
-      } else {
-        await bot.setWebHook(webhookUrl);
-      }
+      const webhookBot = bot as TelegramBot & { setWebhook?: (url: string) => Promise<unknown> };
+      if (webhookBot.setWebhook) await webhookBot.setWebhook(webhookUrl);
+      else await bot.setWebHook(webhookUrl);
       logger.info({ webhookUrl }, "Telegram webhook set");
     } catch (err) {
       logger.error({ err, webhookUrl }, "Failed to set webhook — falling back to polling");
     }
   }
 
-  const infoBot = bot as TelegramBot & {
-    getWebhookInfo?: () => Promise<{ url?: string }>;
-  };
-  const webhookInfo = infoBot.getWebhookInfo
-    ? await infoBot.getWebhookInfo()
-    : await bot.getWebHookInfo();
+  const infoBot = bot as TelegramBot & { getWebhookInfo?: () => Promise<{ url?: string }> };
+  const webhookInfo = infoBot.getWebhookInfo ? await infoBot.getWebhookInfo() : await bot.getWebHookInfo();
 
   if (!webhookInfo.url || webhookInfo.url !== webhookUrl) {
     if (webhookUrl) logger.warn("Webhook not active — falling back to polling");
-
     bot = new TelegramBot(token, { polling: true });
 
     bot.on("message", async (msg) => {
       try {
-        await handleJarvisMessage(bot!, msg);
+        await handleJarvisV5Message(bot!, msg);
       } catch (err) {
-        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis message");
-        try {
-          await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй отправить сообщение ещё раз.");
-        } catch {}
+        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v5 message");
+        try { await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй отправить сообщение ещё раз."); } catch {}
       }
     });
 
     bot.on("callback_query", async (query) => {
       try {
         const data = query.data || "";
-        if (isAdminCallback(data)) {
-          await handleAdminCallback(bot!, query);
-        } else {
-          await handleJarvisCallback(bot!, query);
-        }
+        if (isAdminCallback(data)) await handleAdminCallback(bot!, query);
+        else await handleJarvisV5Callback(bot!, query);
       } catch (err) {
         logger.error({ err }, "Error handling callback query");
       }
     });
 
-    bot.on("polling_error", (err) => {
-      logger.error({ err }, "Telegram polling error");
-    });
-
-    logger.info("Telegram Jarvis bot started in polling mode");
+    bot.on("polling_error", (err) => logger.error({ err }, "Telegram polling error"));
+    logger.info("Telegram Jarvis v5 started in polling mode");
   } else {
-    logger.info("Telegram Jarvis bot started in webhook mode");
+    logger.info("Telegram Jarvis v5 started in webhook mode");
   }
 }
 
@@ -157,16 +134,13 @@ export async function handleWebhookUpdate(update: Update): Promise<void> {
 
   try {
     if (update.message) {
-      await handleJarvisMessage(b, update.message);
+      await handleJarvisV5Message(b, update.message);
     } else if (update.callback_query) {
       const data = update.callback_query.data || "";
-      if (isAdminCallback(data)) {
-        await handleAdminCallback(b, update.callback_query);
-      } else {
-        await handleJarvisCallback(b, update.callback_query);
-      }
+      if (isAdminCallback(data)) await handleAdminCallback(b, update.callback_query);
+      else await handleJarvisV5Callback(b, update.callback_query);
     }
   } catch (err) {
-    logger.error({ err }, "Error handling Jarvis webhook update");
+    logger.error({ err }, "Error handling Jarvis v5 webhook update");
   }
 }
