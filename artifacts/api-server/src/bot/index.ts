@@ -30,24 +30,30 @@ async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
     logger.warn({ err }, "Failed to configure Jarvis Telegram commands");
   }
 
-  // Newer Telegram Bot API clients may expose these methods. They are optional so
-  // deployment remains compatible with the currently pinned node-telegram-bot-api.
+  // node-telegram-bot-api v1 mirrors the modern Bot API identity methods with
+  // a single params object. Keep them optional for compatibility with older clients.
   const identityBot = currentBot as TelegramBot & {
-    setMyName?: (name: string) => Promise<unknown>;
-    setMyShortDescription?: (description: string) => Promise<unknown>;
-    setMyDescription?: (description: string) => Promise<unknown>;
+    setMyName?: (params: { name: string }) => Promise<unknown>;
+    setMyShortDescription?: (params: { short_description: string }) => Promise<unknown>;
+    setMyDescription?: (params: { description: string }) => Promise<unknown>;
   };
 
   try {
-    if (identityBot.setMyName) await identityBot.setMyName("Джарвис");
+    if (identityBot.setMyName) {
+      await identityBot.setMyName({ name: "Джарвис" });
+    }
     if (identityBot.setMyShortDescription) {
-      await identityBot.setMyShortDescription("Нейропомощник партнёра Greenleaf");
+      await identityBot.setMyShortDescription({
+        short_description: "Нейропомощник партнёра Greenleaf",
+      });
     }
     if (identityBot.setMyDescription) {
-      await identityBot.setMyDescription(
-        "Джарвис помогает разбирать переписки, возражения, первые сообщения, встречи и ситуации с партнёрами Greenleaf.",
-      );
+      await identityBot.setMyDescription({
+        description:
+          "Джарвис помогает разбирать переписки, возражения, первые сообщения, встречи и ситуации с партнёрами Greenleaf.",
+      });
     }
+    logger.info("Telegram bot profile configured as Jarvis");
   } catch (err) {
     logger.warn({ err }, "Telegram client could not update Jarvis profile text");
   }
@@ -81,7 +87,14 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
   if (webhookUrl) {
     try {
-      await bot.setWebHook(webhookUrl);
+      const webhookBot = bot as TelegramBot & {
+        setWebhook?: (url: string) => Promise<unknown>;
+      };
+      if (webhookBot.setWebhook) {
+        await webhookBot.setWebhook(webhookUrl);
+      } else {
+        await bot.setWebHook(webhookUrl);
+      }
       logger.info({ webhookUrl }, "Telegram webhook set");
     } catch (err) {
       logger.error({ err, webhookUrl }, "Failed to set webhook — falling back to polling");
