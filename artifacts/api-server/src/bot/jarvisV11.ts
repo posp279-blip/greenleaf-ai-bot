@@ -8,6 +8,7 @@ const COLD_CONTEXT_RE = /(?:лично\s+не\s+знаком|вообще\s+не
 const COLD_FIRST_CONTEXT_RE = /(?:холодн|первое\s+сообщен|наблюдател)/iu;
 const LOCK_OR_SYSTEM_RE = /^(?:🔒|Осталось\s+\d+|Остался\s+\d+|Доступно\s+\d+|Привет\s*👋|Контекст очищен|Сейчас не получилось|Что-то пошло не так)/iu;
 const READY_QUOTE_RE = /(?:«[^»]{18,}»|"[^"\n]{18,}")/u;
+const READY_REQUEST_RE = /(?:что\s+написать|напиши\s+(?:сообщение|ответ)|что\s+ответить)/iu;
 
 type SendMessageArgs = Parameters<TelegramBot["sendMessage"]>;
 type RecentMessage = { role: string; content: string };
@@ -82,10 +83,10 @@ function wrapRegressionGuards(
             } else if (
               name &&
               refersToKnownPerson(currentText) &&
-              !containsName(text, name)
+              (!containsName(text, name) || (READY_REQUEST_RE.test(currentText) && !READY_QUOTE_RE.test(text)))
             ) {
               finalText = memoryFallback(name);
-              logger.info({ name }, "Jarvis v11 restored remembered person context");
+              logger.info({ name }, "Jarvis v11 restored remembered person context and ready-message format");
             }
           }
 
