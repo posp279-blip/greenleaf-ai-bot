@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import type { CallbackQuery, Message } from "node-telegram-bot-api";
+import { logger } from "../lib/logger.js";
 import {
   handleJarvisV14Message,
   handleJarvisV14Callback,
@@ -11,6 +12,7 @@ const SITE_URL = process.env.JARVIS_SITE_URL || "https://greenleaf-podbor.ru";
 
 export async function initJarvisV15(): Promise<void> {
   await initJarvisV14();
+  logger.info("Jarvis v15 personal site status command ready");
 }
 
 export async function handleJarvisV15Message(bot: TelegramBot, msg: Message): Promise<void> {
