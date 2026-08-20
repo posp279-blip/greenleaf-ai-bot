@@ -6,7 +6,7 @@
     "types": ["node"]
   },
   "include": [
-    "src/bot/jarvisV2.ts",
+    "src/bot/jarvisV3.ts",
     "src/bot/jarvisKnowledge.ts"
   ]
 }
