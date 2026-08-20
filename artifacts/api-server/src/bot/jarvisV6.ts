@@ -9,6 +9,7 @@ import {
 } from "./jarvisV5.js";
 
 const INTERNAL_SOURCE_RE = /\s*[\[(]?\s*SOURCE(?:\s*[:#_-]?\s*[A-Za-z0-9А-Яа-яЁё.:/_-]+)?\s*[\])]?/giu;
+type SendMessageArgs = Parameters<TelegramBot["sendMessage"]>;
 
 export function sanitizeJarvisUserText(text: string): string {
   const sanitized = text
@@ -28,9 +29,9 @@ function createSanitizingBot(bot: TelegramBot): TelegramBot {
     get(target, property, receiver) {
       if (property === "sendMessage") {
         return async (
-          chatId: TelegramBot.ChatId,
-          text: string,
-          options?: TelegramBot.SendMessageOptions,
+          chatId: SendMessageArgs[0],
+          text: SendMessageArgs[1],
+          options?: SendMessageArgs[2],
         ) => {
           const clean = sanitizeJarvisUserText(text);
           if (clean !== text) {
