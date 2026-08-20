@@ -3,7 +3,7 @@ import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
-import { handleJarvisV6Message, handleJarvisV6Callback, initJarvisV6 } from "./jarvisV6.js";
+import { handleJarvisV7Message, handleJarvisV7Callback, initJarvisV7 } from "./jarvisV7.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
@@ -60,7 +60,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   }
 
   await seedDatabase();
-  await initJarvisV6();
+  await initJarvisV7();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
 
@@ -97,9 +97,9 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
     bot.on("message", async (msg) => {
       try {
-        await handleJarvisV6Message(bot!, msg);
+        await handleJarvisV7Message(bot!, msg);
       } catch (err) {
-        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v6 message");
+        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v7 message");
         try { await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй отправить сообщение ещё раз."); } catch {}
       }
     });
@@ -108,16 +108,16 @@ export async function startBot(webhookUrl?: string): Promise<void> {
       try {
         const data = query.data || "";
         if (isAdminCallback(data)) await handleAdminCallback(bot!, query);
-        else await handleJarvisV6Callback(bot!, query);
+        else await handleJarvisV7Callback(bot!, query);
       } catch (err) {
         logger.error({ err }, "Error handling callback query");
       }
     });
 
     bot.on("polling_error", (err) => logger.error({ err }, "Telegram polling error"));
-    logger.info("Telegram Jarvis v6 started in polling mode");
+    logger.info("Telegram Jarvis v7 started in polling mode");
   } else {
-    logger.info("Telegram Jarvis v6 started in webhook mode");
+    logger.info("Telegram Jarvis v7 started in webhook mode");
   }
 }
 
@@ -134,13 +134,13 @@ export async function handleWebhookUpdate(update: Update): Promise<void> {
 
   try {
     if (update.message) {
-      await handleJarvisV6Message(b, update.message);
+      await handleJarvisV7Message(b, update.message);
     } else if (update.callback_query) {
       const data = update.callback_query.data || "";
       if (isAdminCallback(data)) await handleAdminCallback(b, update.callback_query);
-      else await handleJarvisV6Callback(b, update.callback_query);
+      else await handleJarvisV7Callback(b, update.callback_query);
     }
   } catch (err) {
-    logger.error({ err }, "Error handling Jarvis v6 webhook update");
+    logger.error({ err }, "Error handling Jarvis v7 webhook update");
   }
 }
