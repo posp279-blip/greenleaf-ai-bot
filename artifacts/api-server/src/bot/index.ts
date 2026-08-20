@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
 import { handleJarvisV13Message, handleJarvisV13Callback, initJarvisV13 } from "./jarvisV13.js";
-import { runJarvisV12SelfAudit } from "./jarvisSelfAuditV12.js";
+import { runJarvisV13SelfAudit } from "./jarvisSelfAuditV13.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
@@ -19,7 +19,7 @@ function scheduleAudit(): void {
   if (process.env.JARVIS_AUDIT_ON_START !== "1" || auditScheduled) return;
   auditScheduled = true;
   setTimeout(() => {
-    void runJarvisV12SelfAudit().catch((err) => logger.error({ err, audit: "JARVIS_V12_RELEASE" }, "V12 audit unhandled failure"));
+    void runJarvisV13SelfAudit().catch((err) => logger.error({ err, audit: "JARVIS_V13_SITE_CTA" }, "V13 audit unhandled failure"));
   }, 1500);
 }
 
