@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "incremental": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/bot/jarvisV2.ts",
+    "src/bot/jarvisKnowledge.ts"
+  ]
+}
