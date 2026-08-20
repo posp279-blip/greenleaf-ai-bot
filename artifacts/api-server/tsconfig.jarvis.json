@@ -15,6 +15,7 @@
     "src/bot/jarvisV10.ts",
     "src/bot/jarvisV11.ts",
     "src/bot/jarvisV12.ts",
+    "src/bot/jarvisV13.ts",
     "src/bot/jarvisSelfAuditV10.ts",
     "src/bot/jarvisSelfAuditV11.ts",
     "src/bot/jarvisSelfAuditV11Final.ts",
