@@ -33,7 +33,9 @@ const SPECULATIVE_RE = /(?:как\s+ты\s+(?:думаешь|считаешь)|�
 const PLACEHOLDER_RE = /\[[^\]]{1,80}\]|\{[^}]{1,80}\}|<[^>]{1,80}>|\b(?:ваша\s+сфера|ваше\s+имя|имя\s+собеседника|вставьте\s+(?:сюда|имя|тему))\b/iu;
 const SOURCE_RE = /(?:\(?\[?SOURCE\s*\d+(?:\s*[:#-]\s*[A-Za-z0-9_.:-]+)?\]?\)?)/giu;
 const ZERO_ACTION_RE = /(?:никому\s+(?:ещ[её]\s+)?не\s+(?:написал|написала)|ничего\s+не\s+делает|только\s+(?:читает|изучает)|застрял|завис|перегруз|боится\s+(?:писать|отказов)|не\s+знает\s*,?\s+с\s+чего\s+начать)/iu;
+const CAUSE_SIGNAL_RE = /(?:боится|страх|неуверен|не\s+уверен|не\s+понимает|не\s+знает\s*,?\s+с\s+чего|получил[а]?\s+[^.!?]{0,50}отказ|после\s+[^.!?]{0,50}отказ|нет\s+времени|нет\s+денег|дорого|пирамид|неинтерес|не\s+интерес|не\s+получается|перегруз|устал|выгорел|сдулся|стесняется|не\s+хочет)/iu;
 const TOO_BIG_FIRST_STEP_RE = /(?:напис(?:ать|и)\s+(?:сразу\s+)?(?:тр[её]м|3|нескольким|пяти|5|десяти|10)\s+(?:людям|человекам)|сделай\s+\d+\s+(?:сообщений|контактов))/iu;
+const PREMATURE_ACTION_RE = /(?:состав(?:ить|ь)\s+(?:список|\d+\s+(?:им[её]н|контактов))|напис(?:ать|и)\s+(?:одному|человеку|людям)|сделать\s+первый\s+шаг|выбрать\s+(?:один\s+)?шаг|позвон(?:ить|и)|назнач(?:ить|ь)\s+(?:встречу|созвон))/iu;
 
 function getClient(): OpenAI | null {
   if (!AI_ENABLED) return null;
@@ -45,6 +47,13 @@ function getClient(): OpenAI | null {
 
 function isInterpersonal(userText: string): boolean {
   return INTERPERSONAL_RE.test(userText);
+}
+
+function diagnosticFirstRequired(userText: string): boolean {
+  return isInterpersonal(userText)
+    && WHAT_TO_DO_RE.test(userText)
+    && ZERO_ACTION_RE.test(userText)
+    && !CAUSE_SIGNAL_RE.test(userText);
 }
 
 function shouldSkip(userText: string, outgoing: string): boolean {
@@ -77,12 +86,23 @@ function cleanOutput(text: string): string {
     .trim();
 }
 
-function needsRepair(userText: string, text: string): boolean {
+function needsRepair(userText: string, mode: FinalMentorResult["mode"], text: string): boolean {
   if (PLACEHOLDER_RE.test(text) || SPECULATIVE_RE.test(text)) return true;
   if (DIDACTIC_RE.test(text) && !READY_PHRASE_RE.test(text)) return true;
   if (WHAT_TO_DO_RE.test(userText) && text.length < 500 && !READY_PHRASE_RE.test(text)) return true;
   if (ZERO_ACTION_RE.test(userText) && TOO_BIG_FIRST_STEP_RE.test(text)) return true;
+
+  if (diagnosticFirstRequired(userText)) {
+    if (mode !== "diagnostic_message") return true;
+    if (!READY_PHRASE_RE.test(text)) return true;
+    if (PREMATURE_ACTION_RE.test(text)) return true;
+  }
+
   return false;
+}
+
+function deterministicDiagnosticFallback(): string {
+  return `По описанию видно одно: человек пока не перешёл от изучения к действию. Но почему именно — мы ещё не знаем. Поэтому я бы не назначал ему задачу наугад и не давал ещё больше информации.\n\nЯ бы написал так:\n\n«Слушай, вижу, что ты серьёзно изучаешь материалы. Хочу понять без давления: тебе сейчас просто нужно ещё немного времени разобраться или ты уже немного завис и не понимаешь, с чего лучше начать? Если что-то тормозит — скажи как есть, разберём спокойно».\n\nПока не предлагай ему писать людям или составлять списки. Сначала дождись ответа — тогда будет понятно, нужен ему маленький первый шаг, помощь со страхом или просто время. Пришли его ответ сюда, и разберём дальше.`;
 }
 
 async function synthesizeFinalMentorReply(
@@ -95,6 +115,7 @@ async function synthesizeFinalMentorReply(
 
   try {
     const history = await recentHistory(userId, 10);
+    const mustDiagnoseFirst = diagnosticFirstRequired(userText);
     const retrievalQuery = `${history.map((item) => item.content).join("\n")}\n${userText}\n${v7Text}`;
     const hits = await retrieveJarvisRag(retrievalQuery, 6);
     const rag = renderRagContext(hits);
@@ -106,24 +127,24 @@ async function synthesizeFinalMentorReply(
           role: "system",
           content: `Ты — финальный наставнический слой Джарвиса. До тебя ответ уже прошёл RAG и несколько проверок. Твоя задача — сделать последнюю версию максимально полезной в реальной работе партнёра Greenleaf, строго на основе переданных SOURCE-фрагментов и существующего ответа. Никаких новых фактов из общей памяти модели.
 
-КЛЮЧЕВОЕ РАЗЛИЧИЕ, КОТОРОЕ ТЫ ОБЯЗАН ПРИМЕНЯТЬ:
-A) Если для решения не хватает факта, КОТОРЫЙ ПОЛЬЗОВАТЕЛЬ УЖЕ МОЖЕТ ЗНАТЬ (например: кто этот человек ему, что тот написал дословно, давно ли знакомы) — mode="ask_user". Спроси пользователя один раз и дай варианты.
-B) Если не хватает факта, КОТОРЫЙ МОЖНО УЗНАТЬ ТОЛЬКО У ДРУГОГО ЧЕЛОВЕКА (например: чего боится новичок, почему партнёр завис, что реально смущает кандидата) — НЕ говори пользователю «спроси его...». Это уже действие. mode="diagnostic_message": коротко объясни ситуацию и ДАЙ ГОТОВУЮ ЕСТЕСТВЕННУЮ РЕПЛИКУ, которую пользователь может сразу отправить этому человеку, чтобы безопасно выяснить причину. Затем скажи, что делать после его ответа.
-C) Если данных уже достаточно — mode="solution": дай нормальный разбор, конкретное действие и, если следующий шаг связан с общением, готовую реплику.
+КЛЮЧЕВОЕ РАЗЛИЧИЕ:
+A) Если для решения не хватает факта, КОТОРЫЙ ПОЛЬЗОВАТЕЛЬ УЖЕ МОЖЕТ ЗНАТЬ (кто человек, что он написал дословно, давно ли знакомы) — mode="ask_user". Спроси пользователя один раз и дай варианты.
+B) Если не хватает факта, КОТОРЫЙ МОЖНО УЗНАТЬ ТОЛЬКО У ДРУГОГО ЧЕЛОВЕКА (чего он боится, почему завис, что реально смущает) — mode="diagnostic_message". Не пиши «спроси его». Дай готовую естественную реплику, которую пользователь может сразу отправить, чтобы безопасно выяснить причину.
+C) Если данных достаточно — mode="solution": разбор + конкретное действие + готовая реплика, если нужен разговор.
+
+ПРАВИЛО DIAGNOSTIC-FIRST:
+Если во входных данных diagnostic_first_required=true, причина бездействия НЕ ИЗВЕСТНА. В этом случае ты ОБЯЗАН вернуть mode="diagnostic_message". Нельзя объявлять «он застрял», «ему страшно», «он перегружен» как установленный факт. Нельзя пока назначать список контактов, писать людям, созвон, встречу или иной рабочий шаг. Сначала только мягкая диагностика через готовое сообщение. После ответа человека можно выбирать действие.
 
 СТАНДАРТ 10/10:
-- звучит как сильный живой наставник, а не методичка;
-- сначала 1–3 предложения по сути: что здесь происходит и почему именно этот шаг логичен;
-- затем «Я бы сделал так» / естественный эквивалент;
-- если нужен разговор — готовый текст в кавычках, без плейсхолдеров и без выдуманных деталей;
-- если человек пока вообще не действует/перегружен/боится — только ОДИН маленький безопасный первый шаг; не требуй сразу писать 3–10 людям;
-- не заканчивай «как думаешь, он готов?». Заканчивай конкретным действием или «пришли его ответ — разберём дальше»;
-- не пиши «это поможет прояснить его состояние», если можно сказать живее;
+- отделяй наблюдаемый факт от гипотезы;
+- звучишь как живой наставник, а не методичка;
+- 1–3 предложения по сути, затем «Я бы написал так» / естественный эквивалент;
+- готовый текст без плейсхолдеров и выдуманных деталей;
+- один логичный следующий шаг, но только ПОСЛЕ того, как причина известна;
+- не заканчивай вопросом «как думаешь, он готов?»;
 - не используй SOURCE в пользовательском тексте;
-- не обещай доход, лечение, гарантии и не придумывай факты компании;
-- для сложного кейса обычно 120–220 слов; если задача проста — короче.
-
-ВАЖНО: текущий ответ v7 может быть слишком коротким или ошибочно выглядеть как clarification. Не сохраняй эту форму механически. Определи режим по правилам A/B/C выше.
+- не обещай доход, лечение, гарантии;
+- сложный кейс обычно 120–220 слов.
 
 SOURCE-ФРАГМЕНТЫ:
 ${rag}
@@ -139,11 +160,12 @@ ${rag}
             recent_context: history.slice(-8),
             user_asks_what_to_do: WHAT_TO_DO_RE.test(userText),
             zero_action_or_overload: ZERO_ACTION_RE.test(userText),
+            diagnostic_first_required: mustDiagnoseFirst,
           }),
         },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.16,
+      temperature: 0.12,
       max_tokens: 1300,
     });
 
@@ -165,12 +187,14 @@ ${rag}
 
 async function repairFinalMentorReply(
   userText: string,
+  mode: FinalMentorResult["mode"],
   text: string,
-): Promise<string | null> {
+): Promise<FinalMentorResult | null> {
   const c = getClient();
   if (!c) return null;
 
   try {
+    const mustDiagnoseFirst = diagnosticFirstRequired(userText);
     const hits = await retrieveJarvisRag(`${userText}\n${text}`, 5);
     const response = await c.chat.completions.create({
       model: PROXY_MODEL,
@@ -179,35 +203,50 @@ async function repairFinalMentorReply(
           role: "system",
           content: `Исправь финальный ответ Джарвиса, не меняя факты и методику SOURCE.
 
-Нельзя:
-- начинать с сухого «Спроси новичка/партнёра/кандидата...» без готовой реплики;
-- заставлять пользователя самому конструировать диагностический вопрос;
-- спрашивать, как пользователь думает, готов ли другой человек;
-- использовать SOURCE или плейсхолдеры;
-- предлагать несколько контактов сразу человеку, который ещё вообще не действует.
+Если diagnostic_first_required=true:
+- причина бездействия неизвестна;
+- итоговый mode ОБЯЗАН быть diagnostic_message;
+- не делай вывод о причине как о факте;
+- не назначай список контактов, сообщения людям, созвон, встречу или другой рабочий шаг;
+- дай готовое мягкое диагностическое сообщение, которое пользователь может отправить прямо сейчас;
+- после него попроси дождаться реального ответа и прислать его Джарвису.
 
-Нужно:
-- короткий живой диагноз;
-- если надо выяснить причину у третьего лица — готовое диагностическое сообщение в кавычках;
-- один маленький следующий шаг;
-- конкретный финал.
+Всегда нельзя:
+- сухое «Спроси новичка/партнёра/кандидата...» без готовой реплики;
+- гадать о готовности другого человека;
+- SOURCE и плейсхолдеры;
+- несколько действий сразу человеку, который ещё не действует.
 
 SOURCE:
 ${renderRagContext(hits)}
 
-Верни ТОЛЬКО JSON: {"text":"исправленный ответ"}`,
+Верни ТОЛЬКО JSON: {"mode":"ask_user"|"diagnostic_message"|"solution","text":"исправленный ответ"}`,
         },
-        { role: "user", content: JSON.stringify({ user_message: userText, answer: text }) },
+        {
+          role: "user",
+          content: JSON.stringify({
+            user_message: userText,
+            previous_mode: mode,
+            answer: text,
+            diagnostic_first_required: mustDiagnoseFirst,
+          }),
+        },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.08,
+      temperature: 0.05,
       max_tokens: 1300,
     });
 
     const raw = response.choices[0]?.message?.content || "{}";
-    const parsed = JSON.parse(raw) as { text?: string };
-    const clean = parsed.text ? cleanOutput(parsed.text) : "";
-    return clean || null;
+    const parsed = JSON.parse(raw) as Partial<FinalMentorResult>;
+    const clean = typeof parsed.text === "string" ? cleanOutput(parsed.text) : "";
+    if (!clean) return null;
+    const repairedMode: FinalMentorResult["mode"] = parsed.mode === "ask_user"
+      ? "ask_user"
+      : parsed.mode === "diagnostic_message"
+        ? "diagnostic_message"
+        : "solution";
+    return { mode: repairedMode, text: clean };
   } catch (err) {
     logger.warn({ err }, "Jarvis v8 final repair failed");
     return null;
@@ -246,16 +285,27 @@ function createV8Bot(
             firstSubstantiveReplyHandled = true;
             const synthesized = await synthesizeFinalMentorReply(userId, userText, text);
             if (synthesized?.text) {
-              finalText = synthesized.text;
+              let finalResult: FinalMentorResult = synthesized;
 
-              if (needsRepair(userText, finalText)) {
-                const repaired = await repairFinalMentorReply(userText, finalText);
-                if (repaired) finalText = repaired;
+              if (needsRepair(userText, finalResult.mode, finalResult.text)) {
+                const repaired = await repairFinalMentorReply(userText, finalResult.mode, finalResult.text);
+                if (repaired) finalResult = repaired;
               }
 
-              finalText = cleanOutput(finalText);
+              if (needsRepair(userText, finalResult.mode, finalResult.text) && diagnosticFirstRequired(userText)) {
+                finalResult = {
+                  mode: "diagnostic_message",
+                  text: deterministicDiagnosticFallback(),
+                };
+                logger.warn("Jarvis v8 used deterministic diagnostic-first fallback");
+              }
+
+              finalText = cleanOutput(finalResult.text);
               onFinal(finalText);
-              logger.info({ mode: synthesized.mode }, "Jarvis v8 final grounded mentor layer applied");
+              logger.info({
+                mode: finalResult.mode,
+                diagnosticFirst: diagnosticFirstRequired(userText),
+              }, "Jarvis v8 final grounded mentor layer applied");
             }
           }
 
@@ -271,7 +321,7 @@ function createV8Bot(
 
 export async function initJarvisV8(): Promise<void> {
   await initJarvisV7();
-  logger.info("Jarvis v8 final-grounded mentor layer ready");
+  logger.info("Jarvis v8 diagnostic-first final mentor layer ready");
 }
 
 export async function handleJarvisV8Message(bot: TelegramBot, msg: Message): Promise<void> {
