@@ -3,13 +3,11 @@ import type { Update } from "node-telegram-bot-api";
 import { logger } from "../lib/logger.js";
 import { handleAdminCallback } from "./engine.js";
 import { seedDatabase } from "./seed.js";
-import { handleJarvisV8Message, handleJarvisV8Callback, initJarvisV8 } from "./jarvisV8.js";
-import { runJarvisSelfAudit } from "./jarvisSelfAudit.js";
+import { handleJarvisV9Message, handleJarvisV9Callback, initJarvisV9 } from "./jarvisV9.js";
 import { db } from "@workspace/db";
 import { appSettingsTable } from "@workspace/db";
 
 let bot: TelegramBot | null = null;
-let auditScheduled = false;
 
 function isAdminCallback(data: string): boolean {
   return data.startsWith("admin_") ||
@@ -17,16 +15,6 @@ function isAdminCallback(data: string): boolean {
     data.startsWith("lead_to_partner_") ||
     data.startsWith("toggle_") ||
     data.startsWith("partner_leads_admin_");
-}
-
-function scheduleAuditIfRequested(): void {
-  if (process.env.JARVIS_AUDIT_ON_START !== "1" || auditScheduled) return;
-  auditScheduled = true;
-  setTimeout(() => {
-    void runJarvisSelfAudit().catch((err) => {
-      logger.error({ err, audit: "JARVIS_PRE_RELEASE" }, "AUDIT unhandled failure");
-    });
-  }, 1500);
 }
 
 async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
@@ -50,9 +38,7 @@ async function configureJarvisIdentity(currentBot: TelegramBot): Promise<void> {
 
   try {
     if (identityBot.setMyName) await identityBot.setMyName({ name: "Джарвис" });
-    if (identityBot.setMyShortDescription) {
-      await identityBot.setMyShortDescription({ short_description: "Нейропомощник партнёра Greenleaf" });
-    }
+    if (identityBot.setMyShortDescription) await identityBot.setMyShortDescription({ short_description: "Нейропомощник партнёра Greenleaf" });
     if (identityBot.setMyDescription) {
       await identityBot.setMyDescription({
         description: "Джарвис помогает разбирать переписки, возражения, первые сообщения, встречи и ситуации с партнёрами Greenleaf.",
@@ -72,9 +58,7 @@ export async function startBot(webhookUrl?: string): Promise<void> {
   }
 
   await seedDatabase();
-  await initJarvisV8();
-  // Audit is intentionally independent of Telegram network calls.
-  scheduleAuditIfRequested();
+  await initJarvisV9();
 
   bot = new TelegramBot(token, { polling: false, webHook: false });
 
@@ -104,42 +88,34 @@ export async function startBot(webhookUrl?: string): Promise<void> {
 
   const infoBot = bot as TelegramBot & { getWebhookInfo?: () => Promise<{ url?: string }> };
   const webhookInfo = infoBot.getWebhookInfo ? await infoBot.getWebhookInfo() : await bot.getWebHookInfo();
-
   if (!webhookInfo.url || webhookInfo.url !== webhookUrl) {
     if (webhookUrl) logger.warn("Webhook not active — falling back to polling");
     bot = new TelegramBot(token, { polling: true });
-
     bot.on("message", async (msg) => {
       try {
-        await handleJarvisV8Message(bot!, msg);
+        await handleJarvisV9Message(bot!, msg);
       } catch (err) {
-        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v8 message");
+        logger.error({ err, chatId: msg.chat.id }, "Error handling Jarvis v9 message");
         try { await bot!.sendMessage(msg.chat.id, "Что-то пошло не так. Попробуй отправить сообщение ещё раз."); } catch {}
       }
     });
-
     bot.on("callback_query", async (query) => {
       try {
         const data = query.data || "";
         if (isAdminCallback(data)) await handleAdminCallback(bot!, query);
-        else await handleJarvisV8Callback(bot!, query);
+        else await handleJarvisV9Callback(bot!, query);
       } catch (err) {
         logger.error({ err }, "Error handling callback query");
       }
     });
-
     bot.on("polling_error", (err) => logger.error({ err }, "Telegram polling error"));
-    logger.info("Telegram Jarvis v8 started in polling mode");
+    logger.info("Telegram Jarvis v9 started in polling mode");
   } else {
-    logger.info("Telegram Jarvis v8 started in webhook mode");
+    logger.info("Telegram Jarvis v9 started in webhook mode");
   }
-
-  scheduleAuditIfRequested();
 }
 
-export function getBot(): TelegramBot | null {
-  return bot;
-}
+export function getBot(): TelegramBot | null { return bot; }
 
 export async function handleWebhookUpdate(update: Update): Promise<void> {
   const b = getBot();
@@ -147,16 +123,14 @@ export async function handleWebhookUpdate(update: Update): Promise<void> {
     logger.warn("Bot not initialized — skipping webhook update");
     return;
   }
-
   try {
-    if (update.message) {
-      await handleJarvisV8Message(b, update.message);
-    } else if (update.callback_query) {
+    if (update.message) await handleJarvisV9Message(b, update.message);
+    else if (update.callback_query) {
       const data = update.callback_query.data || "";
       if (isAdminCallback(data)) await handleAdminCallback(b, update.callback_query);
-      else await handleJarvisV8Callback(b, update.callback_query);
+      else await handleJarvisV9Callback(b, update.callback_query);
     }
   } catch (err) {
-    logger.error({ err }, "Error handling Jarvis v8 webhook update");
+    logger.error({ err }, "Error handling Jarvis v9 webhook update");
   }
 }
