@@ -33,8 +33,8 @@ function coldContextIsSufficient(history: RecentMessage[], current: string): boo
 function rememberedPersonName(history: RecentMessage[]): string | null {
   const joined = history.filter((item) => item.role === "user").map((item) => item.content).join("\n");
   const patterns = [
-    /(?:кандидат(?:а)?\s+зовут|е[её]\s+зовут|его\s+зовут)\s+([А-ЯЁ][а-яё]{2,24})/u,
-    /\b([А-ЯЁ][а-яё]{2,24})\s+[-—]\s+(?:кандидат|партн[её]р|бывш)/u,
+    /(?:кандидат(?:а)?\s+зовут|е[её]\s+зовут|его\s+зовут)\s+([А-ЯЁ][а-яё]{2,24})/iu,
+    /\b([А-ЯЁ][а-яё]{2,24})\s+[-—]\s+(?:кандидат|партн[её]р|бывш)/iu,
   ];
   for (const pattern of patterns) {
     const match = joined.match(pattern);
