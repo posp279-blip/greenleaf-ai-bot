@@ -18,6 +18,7 @@
     "src/bot/jarvisV13.ts",
     "src/bot/jarvisV14.ts",
     "src/bot/jarvisV15.ts",
+    "src/bot/jarvisV16.ts",
     "src/bot/jarvisSiteIdentity.ts",
     "src/bot/jarvisSelfAuditV10.ts",
     "src/bot/jarvisSelfAuditV11.ts",
